@@ -1,0 +1,12 @@
+{
+  "name": "visual-rosetta",
+  "version": "0.1.0",
+  "description": "Maps the visual regions of a rendered web page to their DOM subtrees, fingerprints the framework, and compares reference/implementation pairs into an observation report.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "enumerate": "scripts/enumerate.sh",
+    "compare": "scripts/compare.sh"
+  }
+}

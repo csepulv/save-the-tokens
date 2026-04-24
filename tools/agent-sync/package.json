@@ -1,0 +1,69 @@
+{
+  "name": "agent-sync",
+  "version": "1.0.1",
+  "description": "CLI tool for managing AI agent skills and plugins across Claude, Codex, Cursor, and Gemini",
+  "type": "module",
+  "main": "agent-sync.js",
+  "bin": {
+    "agent-sync": "agent-sync.js"
+  },
+  "files": [
+    "agent-sync.js",
+    "lib/*.js",
+    "samples/",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node agent-sync.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write '**/*.js' '!node_modules'",
+    "format:check": "prettier --check '**/*.js' '!node_modules'",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "claude",
+    "cursor",
+    "codex",
+    "gemini",
+    "ai",
+    "agent",
+    "skills",
+    "plugins",
+    "cli",
+    "anthropic",
+    "llm"
+  ],
+  "author": "Christian Sepulveda <csepulv@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/csepulv/save-the-tokens.git",
+    "directory": "tools/agent-sync"
+  },
+  "bugs": {
+    "url": "https://github.com/csepulv/save-the-tokens/issues"
+  },
+  "homepage": "https://github.com/csepulv/save-the-tokens/tree/main/tools/agent-sync#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^8.2.0",
+    "archiver": "^7.0.1",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.0",
+    "ky": "^1.14.3",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "globals": "^17.3.0",
+    "jest": "^30.2.0",
+    "prettier": "^3.8.1"
+  }
+}

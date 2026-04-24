@@ -1,0 +1,21 @@
+{
+  "name": "session-export",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Export Claude Code conversations from JSONL to readable markdown or text",
+  "bin": {
+    "session-export": "./bin/session-export.js"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.1.1"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.1",
+    "pretty-ms": "^9.3.0",
+    "yargs": "^17.7.2"
+  }
+}

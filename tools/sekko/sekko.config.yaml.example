@@ -1,0 +1,12 @@
+# sekko configuration
+# Copy to sekko.config.yaml in your project root
+
+# Only include network requests to these hosts in extraction
+# Useful for filtering out CDN, auth providers, and dev server noise
+includeHosts:
+  - localhost:3456
+
+# Or exclude specific hosts instead
+# excludeHosts:
+#   - fonts.googleapis.com
+#   - clerk.accounts.dev

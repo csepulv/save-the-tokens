@@ -1,0 +1,70 @@
+# Plugins Directory - Example Configuration
+#
+# This file defines which Claude Code marketplaces and plugins to install.
+#
+# Usage:
+#   agent-sync plugins           # Install missing plugins
+#   agent-sync plugins --clean   # Also uninstall unlisted plugins
+#   agent-sync plugins --dry-run # Preview changes
+
+# Marketplaces are registered automatically before plugins are installed.
+# The source field accepts GitHub owner/repo shorthand or full URLs.
+marketplaces:
+  - name: claude-plugins-official
+    source: anthropics/claude-plugins-official
+
+  - name: claude-code-workflows
+    source: wshobson/agents
+
+plugins:
+  # Claude Official — core
+  - name: context7
+    marketplace: claude-plugins-official
+    category: core
+
+  - name: code-review
+    marketplace: claude-plugins-official
+    category: core
+
+  - name: feature-dev
+    marketplace: claude-plugins-official
+    category: core
+
+  - name: frontend-design
+    marketplace: claude-plugins-official
+    category: core
+
+  - name: code-simplifier
+    marketplace: claude-plugins-official
+    category: core
+
+  # Claude Official — LSP
+  - name: typescript-lsp
+    marketplace: claude-plugins-official
+    category: lsp
+
+  - name: pyright-lsp
+    marketplace: claude-plugins-official
+    category: lsp
+
+  # Community workflow plugins (wshobson/agents)
+  - name: accessibility-compliance
+    marketplace: claude-code-workflows
+    category: workflows
+
+  - name: cicd-automation
+    marketplace: claude-code-workflows
+    category: workflows
+
+# Field descriptions:
+#
+# name: Plugin name as registered in the marketplace
+#
+# marketplace: The marketplace where the plugin is published
+#   - claude-plugins-official: Anthropic's official plugins
+#   - claude-code-workflows: Community workflow plugins
+#
+# category: Optional, for your own organization
+#   - core: Essential plugins
+#   - lsp: Language Server Protocol plugins
+#   - workflows: Workflow automation plugins
