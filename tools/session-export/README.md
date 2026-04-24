@@ -27,8 +27,11 @@ tools in this space; look around before settling.
 ## Install
 
 ```bash
-npm install -g session-export
+npm install -g @csepulv/session-export
 ```
+
+(The CLI binary is still called `session-export` — only the npm
+package name is scoped.)
 
 Or from source:
 

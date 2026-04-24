@@ -39,12 +39,12 @@ tools in this space; look around before settling.
 ## Installation
 
 ```bash
-npm install -g agent-sync
+npm install -g @csepulv/agent-sync
 
 # OR
 
-npx agent-sync readme
-npx agent-sync init
+npx @csepulv/agent-sync readme
+npx @csepulv/agent-sync init
 ```
 
 Or from source:
@@ -527,6 +527,32 @@ npm test
 # Run CLI locally
 node agent-sync.js --help
 ```
+
+## Coming from `ai-config-sync`?
+
+`agent-sync` is the renamed continuation of the `ai-config-sync` npm
+package. Functionality is unchanged; only the package name, the
+config-file location, and the source location moved (this repo is now
+a sub-tree of the
+[`save-the-tokens`](https://github.com/csepulv/save-the-tokens)
+monorepo).
+
+```bash
+# 1. Swap the package
+npm uninstall -g ai-config-sync
+npm install -g @csepulv/agent-sync
+
+# 2. Move your config (file format is unchanged)
+mv ~/.ai-config-sync ~/.agent-sync
+
+# 3. Verify
+agent-sync status
+```
+
+If you'd rather start fresh, skip step 2 and run `agent-sync init`.
+
+(The CLI binary is still called `agent-sync` — only the npm package
+name is scoped.)
 
 ## License
 

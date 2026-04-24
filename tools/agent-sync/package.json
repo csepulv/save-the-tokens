@@ -1,6 +1,6 @@
 {
-  "name": "agent-sync",
-  "version": "1.0.1",
+  "name": "@csepulv/agent-sync",
+  "version": "1.0.0",
   "description": "CLI tool for managing AI agent skills and plugins across Claude, Codex, Cursor, and Gemini",
   "type": "module",
   "main": "agent-sync.js",

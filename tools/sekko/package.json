@@ -1,19 +1,54 @@
 {
   "name": "sekko",
   "version": "1.0.0",
-  "description": "Capture Playwright traces and produce agent-consumable artifacts",
+  "description": "Capture browser and terminal sessions; extract structured artifacts AI agents can read.",
+  "type": "module",
   "bin": {
     "sekko": "./bin/sekko.js"
   },
+  "files": [
+    "bin/",
+    "src/",
+    "sekko.config.yaml.example",
+    "README.md"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true"
+    "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true",
+    "prepublishOnly": "npm test"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module",
+  "keywords": [
+    "claude",
+    "ai",
+    "agent",
+    "playwright",
+    "browser",
+    "terminal",
+    "trace",
+    "asciicast",
+    "cli"
+  ],
+  "author": "Christian Sepulveda <csepulv@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/csepulv/save-the-tokens.git",
+    "directory": "tools/sekko"
+  },
+  "bugs": {
+    "url": "https://github.com/csepulv/save-the-tokens/issues"
+  },
+  "homepage": "https://github.com/csepulv/save-the-tokens/tree/main/tools/sekko#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
   "dependencies": {
     "@andrii_kremlovskyi/playwright-traces-reader": "^1.3.2",
     "@deepgram/sdk": "^4.11.3",

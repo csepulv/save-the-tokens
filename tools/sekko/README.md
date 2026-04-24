@@ -40,6 +40,12 @@ from the recording. Narration is optional.
 
 ## Install
 
+> **Platform:** macOS Apple Silicon (`darwin-arm64`) only. The
+> terminal-recording path uses `node-pty` with a vendored arm64
+> prebuild; on other platforms `npm install` will refuse with
+> `EBADPLATFORM`. Cross-platform support hasn't been validated; if
+> you'd find it useful, open an issue.
+
 ```bash
 npm install -g sekko
 npx playwright install chromium

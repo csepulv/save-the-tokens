@@ -9,7 +9,8 @@ Tools and skills for working with AI coding agents — especially
 
 ## Tools
 
-Standalone utilities. Each has its own README with install and usage.
+Standalone utilities. Each has its own README with full install and
+usage.
 
 | Tool | What it does |
 | ---- | ------------ |
@@ -17,6 +18,20 @@ Standalone utilities. Each has its own README with install and usage.
 | [`session-export`](tools/session-export/) | Export Claude Code conversations from JSONL to readable markdown or plain text. |
 | [`sekko`](tools/sekko/) | Capture browser and terminal sessions; extract structured artifacts AI agents can read. |
 | [`agent-isolation`](tools/agent-isolation/) | Run Claude Code in isolated Docker containers with full access to your skills, plugins, and MCP config. |
+
+### Install from npm
+
+```bash
+npm install -g @csepulv/agent-sync       # agent-sync CLI
+npm install -g sekko                     # sekko CLI (macOS arm64 only)
+npm install -g @csepulv/session-export   # session-export CLI
+```
+
+`agent-isolation` ships as a Dockerfile + scripts — clone the repo
+and follow its [README](tools/agent-isolation/).
+
+> Coming from `ai-config-sync`? It was renamed to `@csepulv/agent-sync`.
+> See [the migration steps](tools/agent-sync/#coming-from-ai-config-sync).
 
 ## Skills
 
