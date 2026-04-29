@@ -7,6 +7,8 @@ import * as exportCmd from '../lib/commands/export.js';
 import * as listCmd from '../lib/commands/list.js';
 import * as allCmd from '../lib/commands/all.js';
 import * as statsCmd from '../lib/commands/stats.js';
+import * as getIdCmd from '../lib/commands/get-id.js';
+import * as mergeCmd from '../lib/commands/merge.js';
 
 // `--output` accepts an optional value (bare, path, or dir/). yargs doesn't
 // model this natively, so extract it before yargs parses the rest.
@@ -29,8 +31,12 @@ await yargs(afterOutput)
       .option('include-timestamps', { type: 'boolean', default: false, describe: 'Include per-message timestamps' })
       .option('include-skill-text', { type: 'boolean', default: false, describe: 'Keep full skill bodies (default: first 2 lines)' })
       .option('include-all', { type: 'boolean', default: false, describe: 'Include everything: tools, results, thinking, subagents, system, timestamps' })
+      .option('user-only', { type: 'boolean', default: false, describe: 'Emit only human-typed user prose (drops assistant, system, subagents)' })
+      .option('skip-turns', { type: 'number', describe: 'Skip the first N user/assistant turns' })
+      .option('limit-turns', { type: 'number', describe: 'Emit at most N user/assistant turns' })
       .option('format', { type: 'string', default: 'md', choices: ['md', 'text'], describe: 'Output format' })
-      .option('source', { type: 'string', default: 'default', describe: 'Source alias or path (default: "default")' }),
+      .option('source', { type: 'string', default: 'default', describe: 'Source alias or path (default: "default")' })
+      .option('all', { type: 'boolean', default: false, describe: 'Emit every matching session (default: halt on ambiguity)' }),
     async (args) => {
       if (!args.id) {
         console.error('Error: conversation ID or title required.\n');
@@ -59,8 +65,32 @@ await yargs(afterOutput)
       .option('before', { type: 'string', describe: 'Include sessions on/before (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)' })
       .option('config', { type: 'string', describe: 'Path to config file (default: ~/.session-export.yaml)' })
       .option('exclude-timestamps', { type: 'boolean', default: false, describe: 'Omit per-message timestamps' })
-      .option('include-skill-text', { type: 'boolean', default: false, describe: 'Keep full skill bodies' }),
+      .option('include-skill-text', { type: 'boolean', default: false, describe: 'Keep full skill bodies' })
+      .option('user-only', { type: 'boolean', default: false, describe: 'Emit only human-typed user prose; skips .full.md (redundant)' })
+      .option('skip-turns', { type: 'number', describe: 'Skip the first N user/assistant turns' })
+      .option('limit-turns', { type: 'number', describe: 'Emit at most N user/assistant turns' }),
     (args) => allCmd.run(args)
+  )
+  .command(
+    'get-id <slug>',
+    'Resolve a custom-title slug to its session UUID(s)',
+    (y) => y
+      .positional('slug', { type: 'string', describe: 'Exact custom title (set via Claude Code /rename)' })
+      .option('source', { type: 'string', describe: 'Restrict to one source (default: walk all)' }),
+    (args) => getIdCmd.run(args),
+  )
+  .command(
+    'merge [id]',
+    'One-way file-level sync of session JSONL files between Claude folders',
+    (y) => y
+      .positional('id', { type: 'string', describe: 'Session slug or full UUID — limits the merge to that one session' })
+      .option('source', { type: 'string', demandOption: true, describe: 'Source alias or path (where sessions come from)' })
+      .option('dest', { type: 'string', default: 'default', describe: 'Dest alias or path (default: "default")' })
+      .option('project', { type: 'string', describe: 'Limit to one project (display name, exact)' })
+      .option('all', { type: 'boolean', default: false, describe: 'Merge every session' })
+      .option('force', { type: 'boolean', default: false, describe: 'Overwrite even when dest mtime is newer' })
+      .option('skip-newer', { type: 'boolean', default: false, describe: 'Skip files where dest mtime is newer; copy the rest' }),
+    (args) => mergeCmd.run(args),
   )
   .command(
     'stats',

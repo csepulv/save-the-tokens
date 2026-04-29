@@ -4,6 +4,7 @@ import { extract } from './commands/extract.js';
 import { transcribeCommand } from './commands/transcribe.js';
 import { setupCommand } from './commands/setup.js';
 import { recordTerminal } from './commands/record-terminal.js';
+import { profileList, profileRm } from './commands/profile.js';
 
 export function run(argv) {
   const program = new Command();
@@ -18,6 +19,13 @@ export function run(argv) {
     .option('-o, --output <dir>', 'output directory', './sekko-output')
     .option('--auth <path>', 'load browser storage state from a JSON file')
     .option('--save-auth <path>', 'save browser storage state to a JSON file on close')
+    .option('--profile <name>', 'use a persistent profile at ~/.sekko/profiles/<name>')
+    .option('--user-data-dir <path>', 'use a persistent profile at an arbitrary path')
+    .option('--load-extension <paths>', 'comma-separated unpacked extension dirs (requires --profile or --user-data-dir)')
+    .option('--connect [url]', 'attach to a running Chrome via CDP instead of launching one (default: http://127.0.0.1:9222)')
+    .option('--viewport <wxh>', 'fixed viewport size (e.g., 1920x1080); default tracks the window')
+    .option('--system-screenshots', 'use full-window screencaptures (1Hz) instead of Playwright page-area screenshots; needed to capture extension popups and browser chrome')
+    .option('--no-sanitize', 'skip HAR sanitization (default: redact cookies, auth headers, query/body tokens, and known credential patterns)')
     .option('--narrate', 'record voice-over audio during the session (requires SoX)')
     .option('--keyterm <terms>', 'domain-specific terms to improve transcription accuracy (comma-separated)')
     .action(trace);
@@ -60,6 +68,21 @@ export function run(argv) {
     .command('setup')
     .description('Check and install dependencies for narration (SoX, whisper-cpp, model)')
     .action(setupCommand);
+
+  const profile = program
+    .command('profile')
+    .description('Manage persistent browser profiles for record-web');
+
+  profile
+    .command('list')
+    .description('List profiles in ~/.sekko/profiles/')
+    .action(() => profileList());
+
+  profile
+    .command('rm')
+    .description('Remove a profile')
+    .argument('<name>', 'profile name')
+    .action((name) => profileRm(name));
 
   program.parse(argv);
 }

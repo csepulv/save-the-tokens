@@ -1,6 +1,6 @@
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, writeFile, readdir, copyFile } from 'fs/promises';
 import { existsSync, readFileSync, rmSync } from 'fs';
-import { dirname, resolve } from 'path';
+import { dirname, resolve, join } from 'path';
 import {
   extractScreenshots,
   getNetworkTraffic,
@@ -12,6 +12,8 @@ import { loadConfig } from '../lib/config.js';
 import { filterNetwork } from '../lib/filter-network.js';
 import { correlateActionAndNetworkCalls } from '../lib/correlate.js';
 import { correlateScreenshots, saveCorrelatedScreenshots } from '../lib/correlate-screenshots.js';
+import { buildPageHistoryFromTraceDir, resolvePageId } from '../lib/build-page-map.js';
+import { listSystemScreenshots, correlateSystemScreenshots } from '../lib/correlate-system-screenshots.js';
 import { buildNetworkDetail } from '../lib/formatters/network-detail.js';
 import { formatActions } from '../lib/formatters/actions.js';
 import { formatNetwork } from '../lib/formatters/network.js';
@@ -45,7 +47,13 @@ export async function extract(tracePath, options) {
   actions = correlated.actions;
   detailEntries = correlated.network;
 
-  const { allCount, savedShots } = await extractCorrelateAndSaveScreenshots(ctx, tempScreenshotDir, actions, screenshotDir);
+  const { source, savedShots, allCount } = await pickAndCorrelateScreenshots({
+    tracePath: resolvedTrace,
+    ctx,
+    tempScreenshotDir,
+    actions,
+    screenshotDir,
+  });
 
   const narration = loadNarration(resolvedTrace);
   if (narration) {
@@ -54,8 +62,8 @@ export async function extract(tracePath, options) {
     checkForUntranscribedAudio(resolvedTrace);
   }
 
-  await writeArtifacts(outputDir, { actions, detailEntries, selectors, savedShots, narration });
-  printSummary(outputDir, { actions, detailEntries, selectors, savedShots, allCount, narration });
+  await writeArtifacts(outputDir, { actions, detailEntries, selectors, savedShots, screenshotSource: source, narration });
+  printSummary(outputDir, { actions, detailEntries, selectors, savedShots, allCount, screenshotSource: source, narration });
 }
 
 // --- Helpers (the "how") ---
@@ -163,13 +171,55 @@ async function extractNetworkDetails(ctx, config) {
   return buildNetworkDetail(network);
 }
 
-async function extractCorrelateAndSaveScreenshots(ctx, tempScreenshotDir, actions, screenshotDir) {
+// Pick the screenshot source for this extract: system frames if the
+// recording captured them (--system-screenshots was set), otherwise
+// Playwright page-area frames from trace.zip. Output is the same shape
+// (screenshots/action-NN.jpeg) either way; the consuming agent learns
+// which source via summary.md.
+async function pickAndCorrelateScreenshots({ tracePath, ctx, tempScreenshotDir, actions, screenshotDir }) {
+  const sysSourceDir = resolve(dirname(tracePath), 'system-screenshots');
+  const sysShots = listSystemScreenshots(sysSourceDir);
+
+  if (sysShots.length > 0) {
+    return correlateAndSaveSystemSource({ sysShots, actions, screenshotDir });
+  }
+  return correlateAndSavePlaywrightSource({ ctx, tempScreenshotDir, actions, screenshotDir });
+}
+
+async function correlateAndSavePlaywrightSource({ ctx, tempScreenshotDir, actions, screenshotDir }) {
   const allScreenshots = await extractScreenshots(ctx, tempScreenshotDir);
-  const correlatedShots = correlateScreenshots(actions, allScreenshots);
+  const taggedActions = tagActionsWithPageId(actions, ctx.traceDir);
+  const correlatedShots = correlateScreenshots(taggedActions, allScreenshots);
   const savedShots = saveCorrelatedScreenshots(correlatedShots, screenshotDir);
   rmSync(tempScreenshotDir, { recursive: true, force: true });
-  console.log(`  Screenshots: ${allScreenshots.length} captured → ${savedShots.length} correlated to actions`);
-  return { allCount: allScreenshots.length, savedShots };
+  console.log(`  Screenshots: ${allScreenshots.length} Playwright frames → ${savedShots.length} correlated to actions`);
+  return { source: 'playwright', allCount: allScreenshots.length, savedShots };
+}
+
+async function correlateAndSaveSystemSource({ sysShots, actions, screenshotDir }) {
+  const correlated = correlateSystemScreenshots(actions, sysShots);
+  await mkdir(screenshotDir, { recursive: true });
+  const savedShots = [];
+  for (const shot of correlated) {
+    const indexPart = String(shot.actionIndex).padStart(2, '0');
+    const labelPart = shot.label ? `-${shot.label}` : '';
+    const filename = `action-${indexPart}${labelPart}.jpeg`;
+    const destPath = join(screenshotDir, filename);
+    await copyFile(shot.sourcePath, destPath);
+    savedShots.push({ ...shot, savedPath: destPath, filename });
+  }
+  console.log(`  Screenshots: ${sysShots.length} system frames → ${savedShots.length} correlated to actions`);
+  return { source: 'system', allCount: sysShots.length, savedShots };
+}
+
+function tagActionsWithPageId(actions, traceDir) {
+  const history = buildPageHistoryFromTraceDir(traceDir);
+  if (history.length === 0) return actions;
+  return actions.map((action) => {
+    if (!action.url || action.timestamp == null) return action;
+    const pageId = resolvePageId(history, action.url, action.timestamp);
+    return pageId ? { ...action, pageId } : action;
+  });
 }
 
 function checkForUntranscribedAudio(tracePath) {
@@ -190,7 +240,7 @@ function loadNarration(tracePath) {
   }
 }
 
-async function writeArtifacts(outputDir, { actions, detailEntries, selectors, savedShots, narration }) {
+async function writeArtifacts(outputDir, { actions, detailEntries, selectors, savedShots, screenshotSource, narration }) {
   const artifacts = [
     { file: 'actions.md', content: formatActions(actions) },
     { file: 'network.md', content: formatNetwork(detailEntries) },
@@ -204,6 +254,7 @@ async function writeArtifacts(outputDir, { actions, detailEntries, selectors, sa
         selectorCount: selectors.length,
         networkCount: detailEntries.length,
         screenshotCount: savedShots.length,
+        screenshotSource,
         narrationWordCount: narration?.words?.length || 0,
         outputDir,
       }),
@@ -215,13 +266,14 @@ async function writeArtifacts(outputDir, { actions, detailEntries, selectors, sa
   }
 }
 
-function printSummary(outputDir, { actions, detailEntries, selectors, savedShots, allCount, narration }) {
+function printSummary(outputDir, { actions, detailEntries, selectors, savedShots, allCount, screenshotSource, narration }) {
   console.log(`\nExtraction complete. Output in ${outputDir}/`);
   console.log(`  actions.md          — ${actions.length} actions`);
   console.log(`  network.md          — ${detailEntries.length} requests`);
   console.log(`  network-detail.json — full request/response data`);
   console.log(`  selectors.md        — ${selectors.length} selectors`);
-  console.log(`  screenshots/        — ${savedShots.length} of ${allCount} (correlated to actions)`);
+  const sourceLabel = screenshotSource === 'system' ? 'system frames' : 'Playwright frames';
+  console.log(`  screenshots/        — ${savedShots.length} of ${allCount} ${sourceLabel} (correlated to actions)`);
   if (narration) {
     console.log(`  narration.md        — ${narration.words.length} words`);
   }

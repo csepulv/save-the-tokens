@@ -43,17 +43,23 @@ export async function listJsonlFiles(dir, deps = {}) {
 
 async function readCustomTitle(jsonlPath, deps = {}) {
   const { readFile: read = readFile } = deps;
+  // A session can hold multiple `custom-title` records — Claude Code
+  // appends a new one on every `/rename`. The *current* title is the
+  // last record written, not the first. Walking forward and keeping
+  // the latest match is correct; returning on first match would pin
+  // the result to the original (and now stale) name.
+  let latest = '';
   try {
     const raw = await read(jsonlPath, 'utf-8');
     for (const line of raw.split('\n')) {
       if (!line.trim()) continue;
       const d = JSON.parse(line);
-      if (d.type === 'custom-title') return d.customTitle ?? '';
+      if (d.type === 'custom-title') latest = d.customTitle ?? '';
     }
   } catch {
     // File unreadable or malformed
   }
-  return '';
+  return latest;
 }
 
 async function readFirstUserMessage(jsonlPath, maxLen = 100, deps = {}) {
@@ -105,20 +111,38 @@ export function extractEncodedProjectDir(jsonlPath) {
 export async function findJsonl(conversationId, sourceDir = null, deps = {}) {
   const base = projectsDir(sourceDir);
   const files = await listJsonlFiles(base, deps);
+  const matches = new Set();
 
   // First pass: match by session ID in filename
   for (const f of files) {
     const name = f.split('/').pop();
-    if (name.includes(conversationId)) return f;
+    if (name.includes(conversationId)) matches.add(f);
   }
 
-  // Second pass: match by custom title
+  // Second pass: match by custom title (skip files already matched by id)
+  for (const f of files) {
+    if (matches.has(f)) continue;
+    const title = await readCustomTitle(f, deps);
+    if (title && title.includes(conversationId)) matches.add(f);
+  }
+
+  return [...matches];
+}
+
+// Exact-match against custom title only. Used by `get-id` and merge's
+// --session lookup, where slug ambiguity must be surfaced and the
+// permissive substring match would mislead.
+export async function findJsonlByExactTitle(slug, sourceDir = null, deps = {}) {
+  const base = projectsDir(sourceDir);
+  const files = await listJsonlFiles(base, deps);
+  const matches = [];
+
   for (const f of files) {
     const title = await readCustomTitle(f, deps);
-    if (title && title.includes(conversationId)) return f;
+    if (title === slug) matches.push(f);
   }
 
-  return null;
+  return matches;
 }
 
 export async function listConversations(sourceDir = null, deps = {}) {

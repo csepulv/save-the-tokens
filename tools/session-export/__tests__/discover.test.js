@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { findJsonl, listConversations } from '../lib/discover.js';
+import { findJsonl, findJsonlByExactTitle, listConversations } from '../lib/discover.js';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -52,7 +52,8 @@ test('finds JSONL by partial session ID', async () => {
 
   const deps = makeMockFs(files);
   const result = await findJsonl('abc123', '/mock/.claude', deps);
-  expect(result).toContain('abc12345');
+  expect(result).toHaveLength(1);
+  expect(result[0]).toContain('abc12345');
 });
 
 test('finds JSONL by custom title', async () => {
@@ -65,10 +66,11 @@ test('finds JSONL by custom title', async () => {
 
   const deps = makeMockFs(files);
   const result = await findJsonl('my-special', '/mock/.claude', deps);
-  expect(result).toContain('abc12345-session.jsonl');
+  expect(result).toHaveLength(1);
+  expect(result[0]).toContain('abc12345-session.jsonl');
 });
 
-test('returns null when no match found', async () => {
+test('returns empty array when no match found', async () => {
   const files = {
     '/mock/.claude/projects/-home-test-myapp/abc12345.jsonl':
       JSON.stringify({ type: 'user', message: { content: 'hello' } }),
@@ -76,7 +78,91 @@ test('returns null when no match found', async () => {
 
   const deps = makeMockFs(files);
   const result = await findJsonl('zzz-no-match', '/mock/.claude', deps);
-  expect(result).toBeNull();
+  expect(result).toEqual([]);
+});
+
+test('returns all matches when query is ambiguous across files', async () => {
+  const files = {
+    '/mock/.claude/projects/-home-test-myapp/abc12345-aaaa-bbbb-cccc-dddddddddddd.jsonl': [
+      JSON.stringify({ type: 'custom-title', customTitle: 'my-session' }),
+      JSON.stringify({ type: 'user', message: { content: 'hello' } }),
+    ].join('\n'),
+    '/mock/.claude/projects/-home-test-other/fff99999-aaaa-bbbb-cccc-dddddddddddd.jsonl': [
+      JSON.stringify({ type: 'custom-title', customTitle: 'my-session' }),
+      JSON.stringify({ type: 'user', message: { content: 'world' } }),
+    ].join('\n'),
+  };
+
+  const deps = makeMockFs(files);
+  const result = await findJsonl('my-session', '/mock/.claude', deps);
+  expect(result).toHaveLength(2);
+});
+
+test('does not double-match a file that hits both id and title', async () => {
+  const files = {
+    '/mock/.claude/projects/-home-test-myapp/match-aaaa-bbbb-cccc-dddddddddddd.jsonl': [
+      JSON.stringify({ type: 'custom-title', customTitle: 'match-session' }),
+      JSON.stringify({ type: 'user', message: { content: 'hello' } }),
+    ].join('\n'),
+  };
+
+  const deps = makeMockFs(files);
+  const result = await findJsonl('match', '/mock/.claude', deps);
+  expect(result).toHaveLength(1);
+});
+
+test('findJsonlByExactTitle: returns only exact title matches', async () => {
+  const files = {
+    '/mock/.claude/projects/-home-test-myapp/aaaa1111-aaaa-bbbb-cccc-dddddddddddd.jsonl': [
+      JSON.stringify({ type: 'custom-title', customTitle: 'nesso-memory' }),
+      JSON.stringify({ type: 'user', message: { content: 'first' } }),
+    ].join('\n'),
+    '/mock/.claude/projects/-home-test-myapp/bbbb2222-aaaa-bbbb-cccc-dddddddddddd.jsonl': [
+      JSON.stringify({ type: 'custom-title', customTitle: 'nesso-memory-extended' }),
+      JSON.stringify({ type: 'user', message: { content: 'second' } }),
+    ].join('\n'),
+    '/mock/.claude/projects/-home-test-other/cccc3333-aaaa-bbbb-cccc-dddddddddddd.jsonl': [
+      JSON.stringify({ type: 'custom-title', customTitle: 'nesso-memory' }),
+      JSON.stringify({ type: 'user', message: { content: 'third' } }),
+    ].join('\n'),
+  };
+
+  const deps = makeMockFs(files);
+  const result = await findJsonlByExactTitle('nesso-memory', '/mock/.claude', deps);
+  expect(result).toHaveLength(2);
+  expect(result.every((p) => p.includes('aaaa1111') || p.includes('cccc3333'))).toBe(true);
+});
+
+test('findJsonlByExactTitle: returns latest custom-title when session was renamed multiple times', async () => {
+  // Claude Code appends a new `custom-title` record on every `/rename`.
+  // The current title is the LAST record, not the first.
+  const files = {
+    '/mock/.claude/projects/-home-test-myapp/aaaa1111-aaaa-bbbb-cccc-dddddddddddd.jsonl': [
+      JSON.stringify({ type: 'custom-title', customTitle: 'old-name' }),
+      JSON.stringify({ type: 'user', message: { content: 'hi' } }),
+      JSON.stringify({ type: 'custom-title', customTitle: 'middle-name' }),
+      JSON.stringify({ type: 'assistant', message: { content: 'hello' } }),
+      JSON.stringify({ type: 'custom-title', customTitle: 'current-name' }),
+    ].join('\n'),
+  };
+
+  const deps = makeMockFs(files);
+  const oldHits = await findJsonlByExactTitle('old-name', '/mock/.claude', deps);
+  expect(oldHits).toEqual([]);
+
+  const currentHits = await findJsonlByExactTitle('current-name', '/mock/.claude', deps);
+  expect(currentHits).toHaveLength(1);
+});
+
+test('findJsonlByExactTitle: returns empty when no title matches', async () => {
+  const files = {
+    '/mock/.claude/projects/-home-test-myapp/aaaa1111-aaaa-bbbb-cccc-dddddddddddd.jsonl':
+      JSON.stringify({ type: 'user', message: { content: 'hello' } }),
+  };
+
+  const deps = makeMockFs(files);
+  const result = await findJsonlByExactTitle('nesso-memory', '/mock/.claude', deps);
+  expect(result).toEqual([]);
 });
 
 test('lists conversations sorted by date', async () => {
@@ -145,7 +231,7 @@ test('derives project name from directory path', async () => {
 test('strips XML tags from first user message preview', async () => {
   const files = {
     '/mock/.claude/projects/-home-test-myapp/session-aaaa-1111-2222-333344445555.jsonl': [
-      JSON.stringify({ type: 'user', message: { content: '<command-message>dsf-workshop</command-message> <command-name>/dsf-workshop</command-name>' } }),
+      JSON.stringify({ type: 'user', message: { content: '<command-message>michi-workshop</command-message> <command-name>/michi-workshop</command-name>' } }),
       JSON.stringify({ type: 'user', message: { content: 'the real first message' } }),
     ].join('\n'),
   };

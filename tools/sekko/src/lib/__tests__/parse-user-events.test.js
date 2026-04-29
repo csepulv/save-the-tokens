@@ -3,6 +3,17 @@ import { collapseEvents } from '../parse-user-events.js';
 import { extractSelectors } from '../parse-actions.js';
 
 describe('collapseEvents', () => {
+  test('passes synthetic page-opened events through unchanged', () => {
+    const events = [
+      { type: 'page-opened', timestamp: 1000, selector: null, tag: null, url: 'chrome-extension://abc/popup.html', text: null },
+      { type: 'click', timestamp: 1100, selector: '#btn', tag: 'button', url: 'chrome-extension://abc/popup.html' },
+    ];
+    const result = collapseEvents(events);
+    expect(result).toHaveLength(2);
+    expect(result[0].type).toBe('page-opened');
+    expect(result[0].url).toBe('chrome-extension://abc/popup.html');
+  });
+
   test('collapses sequential input events into a single fill', () => {
     const events = [
       { type: 'input', timestamp: 1, selector: '#search', tag: 'input', url: '/', inputType: 'text', value: 'r' },

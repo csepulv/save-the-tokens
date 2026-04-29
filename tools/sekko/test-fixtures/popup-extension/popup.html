@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Sekko Test Popup</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 16px;
+        width: 280px;
+      }
+      h1 { font-size: 14px; margin: 0 0 8px; }
+      #status { font-size: 12px; color: #666; }
+      button { margin-top: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>Sekko Test Popup</h1>
+    <div id="status" data-testid="popup-status">loading…</div>
+    <button id="trigger" data-testid="popup-trigger">Trigger fetch</button>
+    <script src="popup.js"></script>
+  </body>
+</html>

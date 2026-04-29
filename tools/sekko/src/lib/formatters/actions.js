@@ -1,3 +1,5 @@
+import { derivePageLabel } from '../page-labels.js';
+
 /**
  * Format user events (collapsed) into a markdown action log.
  * Falls back to trace.trace actions if no user events are available.
@@ -50,6 +52,12 @@ function formatEventDescription(event) {
     return `Navigate to ${event.url}${title}`;
   }
 
+  if (type === 'page-opened') {
+    const label = derivePageLabel(event.url);
+    if (label) return `Open ${label}`;
+    return `Open new page: ${event.url}`;
+  }
+
   if (type === 'click') {
     const text = event.text ? ` "${truncate(event.text, 40)}"` : '';
     return `Click${text}`;
@@ -88,6 +96,8 @@ function formatTraceAction(action) {
 
 function formatPageUrl(url) {
   if (!url) return '—';
+  const label = derivePageLabel(url);
+  if (label) return label;
   try {
     const u = new URL(url);
     const path = u.pathname + u.search + u.hash;

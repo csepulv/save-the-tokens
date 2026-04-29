@@ -2,6 +2,23 @@ import { test, expect, describe } from 'vitest';
 import { formatActions } from '../actions.js';
 
 describe('formatActions', () => {
+  test('formats page-opened with surface label for chrome-extension URLs', () => {
+    const events = [
+      { type: 'page-opened', timestamp: 1000, selector: null, tag: null, url: 'chrome-extension://abc/popup.html' },
+    ];
+    const md = formatActions(events);
+    expect(md).toContain('Open popup');
+    expect(md).toContain('| popup |');
+  });
+
+  test('formats page-opened with URL for non-extension pages', () => {
+    const events = [
+      { type: 'page-opened', timestamp: 1000, selector: null, tag: null, url: 'https://example.com/foo' },
+    ];
+    const md = formatActions(events);
+    expect(md).toContain('Open new page: https://example.com/foo');
+  });
+
   test('formats user event click', () => {
     const events = [
       { type: 'click', timestamp: 1000, selector: 'button#submit', tag: 'button', text: 'Submit', url: 'https://example.com/' },

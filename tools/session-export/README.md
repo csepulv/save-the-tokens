@@ -71,6 +71,8 @@ full flag details.
 | `session-export <id>` | Export one conversation (default — no subcommand word) |
 | `session-export list` (alias `ls`) | List conversations |
 | `session-export all <output-dir>` | Bulk export to per-project folders |
+| `session-export get-id <slug>` | Resolve a `/rename`'d slug to its session UUID(s) |
+| `session-export merge` | Sync session JSONLs from one Claude folder to another |
 | `session-export stats` | Aggregate per-session stats as JSON |
 
 All four commands accept `--source <alias\|path>` to restrict to one
@@ -119,6 +121,29 @@ session-export --source work 7dee69bc
 Auto-slug uses the conversation's custom title (slugified) or the
 session ID.
 
+**Multiple matches:** if `<id>` matches more than one session
+(substring of session id, or substring of custom title), the command
+halts and lists every match — it does not silently pick one. Re-run
+with a more specific id/title, or pass `--all` to emit every match.
+
+> **Behavior change** (epic `merge`, 2026-04-26): earlier versions
+> silently picked the first match on ambiguous input. The new halt is
+> a small breaking change for scripts that fed an ambiguous slug and
+> relied on getting *some* output. If that's you, either pass a fully-
+> specific id/title or add `--all`.
+
+```bash
+# Halts and lists matches if 'shared-title' is ambiguous
+session-export shared-title
+
+# Emit every matching session (stdout: concatenated;
+# --output dir/: one file per session with id-suffix in name)
+session-export --all shared-title
+
+# --all combined with --output <file> is refused (multiple sessions
+# can't write to one file). Use --output dir/ instead.
+```
+
 **Content flags** (all default off):
 
 | Flag | Adds |
@@ -128,6 +153,34 @@ session ID.
 | `--include-timestamps` | Per-message timestamps on role headers |
 | `--include-skill-text` | Full skill body text (default: truncated to first 2 lines) |
 | `--include-all` | All of the above, plus tool results, thinking blocks, and subagent conversations |
+
+**Turn-filtering flags** (slice or narrow what gets emitted):
+
+| Flag | Effect |
+|---|---|
+| `--user-only` | Emit only human-typed user prose. Drops assistant, system, subagents, and tool-result-only user records. Strips tool results from surviving user messages so `--include-all` can't smuggle them back in. |
+| `--skip-turns N` | Skip the first N user/assistant turns. Default 0. |
+| `--limit-turns N` | Emit at most N user/assistant turns. Default unlimited. |
+
+A *turn* is one user or assistant message (counted after consecutive
+assistant messages are merged). System and subagent messages do not
+count as turns — they flow through transparently when they fall between
+selected turns, and are dropped if before the first or after the last.
+Frontmatter is always emitted, even when the body slice is empty.
+
+```bash
+# Just the prompts you sent — no model output
+session-export --user-only 7dee69bc
+
+# First three turns only
+session-export --limit-turns 3 7dee69bc
+
+# Skip the first ten turns, take the next five
+session-export --skip-turns 10 --limit-turns 5 7dee69bc
+
+# Only your prose, in turns 2-4
+session-export --user-only --skip-turns 1 --limit-turns 3 7dee69bc
+```
 
 ### List conversations
 
@@ -184,8 +237,91 @@ session-export all ~/exports/archive/ \
 | `--config <path>` | Config file path (default: `~/.session-export.yaml`) |
 | `--exclude-timestamps` | Omit per-message timestamps (default: included) |
 | `--include-skill-text` | Keep full skill body text (default: truncated) |
+| `--user-only` | Emit only human-typed user prose; skip the redundant `.full.md` |
+| `--skip-turns N` | Skip the first N user/assistant turns in each session |
+| `--limit-turns N` | Emit at most N user/assistant turns per session |
 
 Date format: `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SS` (local time).
+
+When `--user-only` is set, only `<slug>.md` is written per session — the
+`.full.md` would be identical (assistant content is gone) so it's
+skipped. `--skip-turns` and `--limit-turns` apply to both files when
+`--user-only` is not set.
+
+### Resolve a slug to a session id
+
+```bash
+session-export get-id <slug> [--source <alias|path>]
+```
+
+`<slug>` is the custom title set via Claude Code's `/rename`. The
+match is exact — substring matches don't count. By default, every
+configured source is searched.
+
+Output is one tab-separated line per match:
+`<sessionId>\t<source>\t<project>`. Exits non-zero if there are no
+matches; exits zero (and lists every match) when one or more match.
+The caller disambiguates.
+
+```bash
+session-export get-id nesso-memory
+# 09eeea4d-e949-46ef-906b-e79ec5af0ad4	default	workspace/nesso
+
+# Restrict to one source
+session-export get-id nesso-memory --source ~/Downloads/doppio-claude
+```
+
+### Merge sessions between Claude folders
+
+```bash
+session-export merge [id] --source <alias|path> [--dest <alias|path>] \
+  [--project <name> | --all] [--force | --skip-newer]
+```
+
+One-way, file-level sync of session JSONL files from one Claude
+folder into another. Useful when you continued a conversation on
+another machine and want to land it back on your primary one.
+
+| Arg | Purpose |
+|---|---|
+| `[id]` (positional) | Session slug or full UUID — limits to that one session |
+| `--source <alias\|path>` | Where sessions come from (required) |
+| `--dest <alias\|path>` | Where they go (default: `default`) |
+| `--project <name>` | Limit to one project — exact display-name match |
+| `--all` | Merge every session in source |
+| `--force` | Overwrite even when dest mtime is newer |
+| `--skip-newer` | Skip files where dest mtime is newer; copy the rest |
+
+Exactly one scope is required: positional `[id]`, or `--project`, or `--all`.
+
+**Conflict pre-flight:** before any file is written, `merge`
+classifies each source file against its dest counterpart by `mtime`.
+If any dest file is newer than its source, the command halts and
+prints the conflict list — nothing is copied. Re-run with `--force`
+to overwrite, or `--skip-newer` to copy the rest and leave conflicts
+alone.
+
+```bash
+# Merge a single session by slug into the default Claude folder
+session-export merge nesso-memory --source ~/Downloads/doppio-claude
+
+# Merge by full UUID
+session-export merge 7e9b370d-e628-4c4a-8b86-ebe2ff2d9c6b \
+  --source ~/Downloads/doppio-claude
+
+# Merge every session from an external folder, overwriting on conflict
+session-export merge --source ~/Downloads/old-claude --all --force
+
+# Limit to one project, skip-newer semantics for safety
+session-export merge \
+  --source ~/Downloads/old-claude \
+  --project workspace/myapp \
+  --skip-newer
+```
+
+This is a one-way merge — sessions in `--dest` that aren't in
+`--source` are left alone. The merge is at the file level only;
+divergent JSONL transcripts cannot be reconciled at the line level.
 
 ### Stats
 

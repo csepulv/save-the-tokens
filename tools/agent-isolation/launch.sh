@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launch.sh — Run, resume, or attach to a dark factory agent container.
+# launch.sh — Run, resume, or attach to a michi agent container.
 #
 # Usage:
 #   ./launch.sh                              # interactive (default mounts)

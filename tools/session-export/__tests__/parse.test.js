@@ -165,20 +165,20 @@ test('drops caveat/stdout noise and rewrites slash commands as one-liners', asyn
 });
 
 test('rewrites skill-style command invocation (command-message first) with full args', () => {
-  const raw = '<command-message>dsf-planning</command-message>\n<command-name>/dsf-planning</command-name>\n<command-args>lets plan an epic, build-info\nmilestones\n\nm1: investigate docs</command-args>';
-  expect(transformUserText(raw)).toBe('/dsf-planning lets plan an epic, build-info\nmilestones\n\nm1: investigate docs');
+  const raw = '<command-message>michi-planning</command-message>\n<command-name>/michi-planning</command-name>\n<command-args>lets plan an epic, build-info\nmilestones\n\nm1: investigate docs</command-args>';
+  expect(transformUserText(raw)).toBe('/michi-planning lets plan an epic, build-info\nmilestones\n\nm1: investigate docs');
 });
 
 test('truncates injected skill body to first two non-blank lines', async () => {
   const { truncateSkillBody } = await import('../lib/parse.js');
-  const raw = 'Base directory for this skill: /home/theuser/.work-claude/skills/dsf-explore\n\n# Dark Factory Explore\n\nA structured conversation for investigative work. Not the full planning → session → debrief lifecycle.\n\n## When to Use\n\n- Cold starts\n- Research\n';
+  const raw = 'Base directory for this skill: /home/theuser/.work-claude/skills/michi-explore\n\n# Michi Explore\n\nA structured conversation for investigative work. Not the full planning → session → debrief lifecycle.\n\n## When to Use\n\n- Cold starts\n- Research\n';
   expect(truncateSkillBody(raw)).toBe(
-    'Base directory for this skill: /home/theuser/.work-claude/skills/dsf-explore\n# Dark Factory Explore',
+    'Base directory for this skill: /home/theuser/.work-claude/skills/michi-explore\n# Michi Explore',
   );
 });
 
 test('transformUserText no longer truncates skill bodies (done at format time)', () => {
-  const raw = 'Base directory for this skill: /home/theuser/.work-claude/skills/dsf-explore\n\n# Dark Factory Explore\n\nbody';
+  const raw = 'Base directory for this skill: /home/theuser/.work-claude/skills/michi-explore\n\n# Michi Explore\n\nbody';
   expect(transformUserText(raw)).toBe(raw);
 });
 

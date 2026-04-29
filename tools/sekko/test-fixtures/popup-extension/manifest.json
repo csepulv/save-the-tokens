@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "sekko popup test fixture",
+  "version": "1.0.0",
+  "description": "Minimal Manifest V3 extension used by sekko's popup-capture integration tests.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Sekko Test Popup"
+  },
+  "background": {
+    "service_worker": "sw.js"
+  },
+  "host_permissions": [
+    "https://example.com/*"
+  ]
+}

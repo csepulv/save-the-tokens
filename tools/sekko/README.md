@@ -76,7 +76,7 @@ A Chromium browser opens. Use the app — navigate, click, fill forms.
 When you're done, close the browser window. sekko saves:
 
 - `trace.zip` — full Playwright trace (actions, DOM snapshots, screenshots, network)
-- `recording.har` — HAR file (all HTTP requests/responses)
+- `recording.har` — HAR file (all HTTP requests/responses), sanitized by default — see [HAR sanitization](#har-sanitization)
 - `user-events.json` — captured user interactions (clicks, form fills, navigation)
 
 ### 2. Record a terminal session
@@ -146,6 +146,8 @@ sekko extract ./my-trace/trace.zip --exclude-hosts fonts.googleapis.com,clerk.ac
 | `sekko extract <input>` | Extract agent-consumable artifacts (auto-detects `.zip` vs `.cast`) |
 | `sekko transcribe <audio>` | Transcribe voice-over WAV to `narration.json` |
 | `sekko setup` | Check and install narration dependencies (SoX, whisper-cpp, model) |
+| `sekko profile list` | List persistent profiles in `~/.sekko/profiles/` |
+| `sekko profile rm <name>` | Remove a persistent profile |
 
 ### `sekko record-web <url>`
 
@@ -162,10 +164,257 @@ sekko record-web https://your-app.com --save-auth auth-state.json     # save log
 | Flag | Description | Default |
 |------|-------------|---------|
 | `-o, --output <dir>` | Output directory | `./sekko-output` |
-| `--auth <path>` | Load browser storage state from JSON | — |
-| `--save-auth <path>` | Save browser storage state to JSON on close | — |
+| `--auth <path>` | Load browser storage state from JSON (ignored when a profile is set or `--connect`) | — |
+| `--save-auth <path>` | Save browser storage state to JSON on close (ignored when a profile is set or `--connect`) | — |
+| `--profile <name>` | Use a persistent profile at `~/.sekko/profiles/<name>` | — |
+| `--user-data-dir <path>` | Use a persistent profile at an arbitrary path | — |
+| `--load-extension <paths>` | Load unpacked Chromium extensions (comma-separated dirs); requires a profile | — |
+| `--connect [url]` | Attach to a running Chrome via CDP instead of launching one | `http://127.0.0.1:9222` when passed (IPv4; Chrome's debug port doesn't listen on IPv6 by default) |
+| `--viewport <wxh>` | Fixed viewport size (e.g., `1920x1080`) | track window |
+| `--system-screenshots` | Use full-window system screencaptures (1Hz) instead of Playwright page-area screenshots — needed to capture extension popups | off |
+| `--no-sanitize` | Skip HAR sanitization. Default redacts cookies, auth headers, query/body tokens, and known credential patterns (Bearer/JWT, AWS keys, GitHub tokens, basic-auth in URLs, DB connection strings, private-key blocks) | sanitize on |
 | `--narrate` | Record voice-over audio (requires SoX) | off |
 | `--keyterm <terms>` | Domain-specific terms for transcription accuracy (comma-separated) | — |
+
+By default the page area tracks the OS window — resize the window during
+recording and the page grows with it. Pass `--viewport 1920x1080` (or any
+`<width>x<height>`) for a fixed viewport instead.
+
+#### Persistent profiles and extensions
+
+Without `--profile` or `--user-data-dir`, sekko opens a fresh Chromium
+profile per run and discards it on close (today's behavior). Pass
+`--profile <name>` to keep state — cookies, localStorage, installed
+extensions, settings — across runs in `~/.sekko/profiles/<name>/`.
+
+```bash
+# Profile under ~/.sekko/profiles/ext-dev
+sekko record-web https://your-app.com --profile ext-dev
+
+# Profile at an arbitrary path
+sekko record-web https://your-app.com --user-data-dir /tmp/sekko-test
+```
+
+When a profile is in use, `--auth` and `--save-auth` are ignored — the
+profile already owns auth state.
+
+To trace a browser extension you're developing, point
+`--load-extension` at the unpacked extension directory:
+
+```bash
+sekko record-web https://your-app.com \
+  --profile ext-dev \
+  --load-extension ~/code/my-extension/dist
+```
+
+Extensions require a persistent profile; sekko refuses
+`--load-extension` without `--profile` or `--user-data-dir`. Multiple
+extensions can be loaded with a comma-separated list:
+
+```bash
+sekko record-web https://your-app.com \
+  --profile ext-dev \
+  --load-extension ~/code/ext-a/dist,~/code/ext-b/dist
+```
+
+> **Heads up:** Don't point `--user-data-dir` at your real Chrome
+> profile (`~/Library/Application Support/Google/Chrome/Default`).
+> Chrome must be closed for it to work, sekko mutates the profile,
+> and changes may sync to your Google account. Use a sekko-managed
+> profile instead.
+
+To inspect or remove profiles, see [Profile management](#profile-management).
+
+#### Connecting to a running Chrome (Cloudflare-protected sites)
+
+Some services (ChatGPT, Claude.com, anything behind Cloudflare's bot
+challenge) detect Playwright-launched browsers and refuse to log in.
+For these sites, sekko can attach to a Chrome instance you started
+yourself with remote debugging enabled. The connected Chrome
+already has your real cookies, your real fingerprint, and your
+manually-completed login — so the bot challenge is already solved.
+
+The recommended setup uses **Chrome Canary** as a dedicated
+recording browser, leaving your everyday Chrome untouched:
+
+1. Install Chrome Canary if not already (download from Google).
+2. Start Canary with the debug port and a dedicated profile dir:
+
+   ```bash
+   "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary" \
+     --remote-debugging-port=9222 \
+     --user-data-dir="$HOME/.canary-sekko"
+   ```
+
+   **Both flags are required.** Chrome refuses to expose remote
+   debugging on the default profile (security policy — prevents
+   anything on localhost from hijacking your real cookies/logins),
+   so a separate `--user-data-dir` is mandatory. The path is
+   stable, so the profile persists across runs — you only set it
+   up once.
+
+3. Verify the debug port is responding before continuing:
+
+   ```bash
+   curl http://127.0.0.1:9222/json/version
+   ```
+
+   Should print JSON with `Browser`, `webSocketDebuggerUrl`, etc.
+   If it errors, check that the Canary launch above didn't fail
+   (re-read the terminal output) and that no other Chrome instance
+   is holding port 9222.
+
+4. **First time only**, in this Canary instance:
+   - Log into the protected service manually (chatgpt.com,
+     claude.ai, etc.). Solve any Cloudflare challenges the same
+     way a normal user would.
+   - If you're recording an interaction with your own browser
+     extension, install it via Canary's `chrome://extensions`
+     (Developer mode → Load unpacked).
+
+   Both logins and the unpacked extension persist in
+   `~/.canary-sekko`, so subsequent runs skip this step.
+
+5. From a separate terminal, run sekko in connect mode:
+
+   ```bash
+   sekko record-web https://chatgpt.com --connect
+   ```
+
+   sekko opens a fresh tab in Canary, navigates to the URL, and
+   records what you do.
+6. Close the new tab when you're done. sekko detaches; Canary
+   stays running with all your other tabs intact.
+
+> **IPv4 vs IPv6 note:** sekko's default connect URL is
+> `http://127.0.0.1:9222` (not `localhost`). Node's DNS resolution
+> on recent versions resolves `localhost` to `::1` (IPv6) first,
+> but Chrome's `--remote-debugging-port` listens on IPv4 only by
+> default, which causes `ECONNREFUSED ::1:9222`. If you pass an
+> explicit `--connect <url>` and use `localhost`, sekko rewrites it
+> to `127.0.0.1` for the same reason.
+
+Notes on connect mode:
+
+- **The recording is bounded by the tab sekko opens.** Activity in
+  your other Canary tabs is not recorded.
+- **Persistence and auth flags don't apply.** `--profile`,
+  `--user-data-dir`, `--load-extension`, `--auth`, and `--save-auth`
+  are mutually exclusive with `--connect` — the connected browser
+  owns its own profile, extensions, and auth state.
+- **No HAR file in connect mode.** HAR is set when the browser
+  context is created; sekko attaches to a context it didn't start.
+  Network data is still captured in `trace.zip` and surfaced via
+  `network.md` / `network-detail.json` after extraction.
+
+#### HAR sanitization
+
+By default, `recording.har` is sanitized after the browser closes —
+secret values are replaced (with `obfuscated` or `[REDACTED]`) but
+header names, JSON keys, URL paths, query-param keys, and request/
+response structure are preserved. The receiving agent can still
+reason about the API shape; the secrets are gone.
+
+What gets redacted:
+
+- `Cookie` and `Set-Cookie` header values
+- `Authorization` header value (the token after the scheme)
+- `Referer` and `Location` header values (URL-walked for sensitive query params)
+- Cookie arrays (`request.cookies`, `response.cookies`)
+- URL query params named `access_token`, `id_token`, `code`,
+  `refresh_token`, `token`, `password`, `email`, `secret`, etc.
+- Same-named fields inside JSON request/response bodies
+- Pattern-matched secrets anywhere in headers, URLs, or bodies:
+  Bearer/JWT tokens (in non-`Authorization` headers too), AWS access
+  keys (`AKIA…`), GitHub tokens (`ghp_…`, `gho_…`, `ghs_…`,
+  `github_pat_…`), `TOKEN=`/`SECRET=`/`PASSWORD=` env-var
+  assignments, basic auth in URLs (`https://user:pass@…`), DB
+  connection strings (`postgres://`, `mysql://`, `mongodb://`,
+  `redis://`), and PEM-formatted private key blocks
+
+To opt out (the rare case where you genuinely need raw secrets in the
+HAR — e.g. replaying against a sandbox API):
+
+```bash
+sekko record-web https://your-app.com --no-sanitize
+```
+
+> Sanitization runs on `recording.har` only. The same network data
+> is also captured inside `trace.zip` (Playwright's internal
+> network log) — `trace.zip` is **not** sanitized today. Treat it as
+> sensitive when sharing.
+
+#### Stopping a recording
+
+Three signals end a recording cleanly — sekko saves trace.zip,
+user-events.json, and recording.har (when applicable) for all
+three:
+
+| Signal | When |
+|---|---|
+| Page close | You close the tab sekko opened (and any popups it spawned). Default behavior. |
+| Ctrl-C | You press Ctrl-C in the terminal that launched sekko. Useful when you want to keep the browser open after recording. |
+| Browser quit | The browser sekko launched (or the connected Chrome) quits or crashes. sekko saves what's been recorded and exits non-zero. |
+
+#### Capturing extension surfaces
+
+When `--load-extension` is in use (or you've manually installed an
+extension in your connected browser), sekko captures interactions
+with the extension's popup, side panel, and options page —
+anywhere a user might click or type. These show up in extracted
+artifacts:
+
+- `screenshots/action-NN-popup.jpeg` — popup state at the moment
+  of the action (similarly `-sidepanel`, `-options`), **when the
+  popup surfaces as a Playwright page**
+- `actions.md` Page column — `popup` / `sidepanel` / `options`
+  instead of a URL path
+- `network-detail.json` — popup-driven fetches alongside page
+  network calls (you can distinguish by URL or by timing relative
+  to popup-labeled actions)
+
+**By default**, sekko's screenshots come from Playwright's page-area
+trace — clean shots of the page DOM, one per action. Manifest V3
+extension popups don't surface as Playwright pages, so they aren't
+captured this way (the popup-open event still appears in
+`actions.md` via CDP target detection, just without a screenshot).
+
+For extension testing, pass **`--system-screenshots`** to switch the
+screenshot source from Playwright frames to system-level captures
+of the browser window. The popup — attached to the toolbar by
+Chromium — appears in those frames.
+
+```bash
+# Default flow — Playwright shots, no permission prompt, no extra disk
+sekko record-web https://your-app.com
+
+# Extension testing — system shots, captures popup state
+sekko record-web https://your-app.com \
+  --profile ext-dev \
+  --load-extension ~/code/my-ext/dist \
+  --system-screenshots
+```
+
+With `--system-screenshots`:
+
+- Recording captures full-window JPEGs at 1Hz to
+  `<output>/system-screenshots/screen-<epoch-ms>.jpg`. The window
+  bounds are derived from `window.screenX/Y/outerWidth/outerHeight`
+  and re-checked every 5 seconds, so resizing or moving the window
+  is handled.
+- `extract` picks the closest system frame to each action (preferring
+  the frame just *after* the action so you see the result) and
+  writes them to `<extract>/screenshots/action-NN.jpeg` — same
+  filename pattern as the default Playwright path, just a different
+  source. `summary.md` notes which source was used.
+- macOS will prompt for Screen Recording permission on first use;
+  grant it to the terminal running sekko (System Settings →
+  Privacy & Security → Screen Recording).
+- Disk cost: ~50 KB/frame × 60/min ≈ 3 MB/min during recording.
+
+If sekko can't derive window bounds (rare; e.g., page evaluation
+fails before bounds are computed), it falls back to capturing the
+full display.
 
 ### `sekko record-terminal`
 
@@ -234,6 +483,19 @@ sekko setup
 
 Walks through SoX, whisper-cpp, and the whisper model. Idempotent —
 re-running skips already-installed items.
+
+### Profile management
+
+```bash
+sekko profile list           # list profiles in ~/.sekko/profiles/
+sekko profile rm <name>      # remove a profile
+```
+
+Profiles can grow as Chromium accumulates extension caches and
+IndexedDB data over time. `sekko profile rm` removes a profile dir
+in one shot; the next `record-web --profile <name>` recreates it
+fresh. There is no automatic cleanup; nothing is removed without an
+explicit command.
 
 ## Narration
 

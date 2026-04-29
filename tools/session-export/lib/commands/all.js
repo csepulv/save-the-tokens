@@ -1,6 +1,7 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseConversation } from '../parse.js';
+import { filterTurns } from '../filter-turns.js';
 import { formatMarkdown } from '../format-markdown.js';
 import { loadConfig, expandTilde, makeSlug, resolveSource } from '../config.js';
 import { listConversations } from '../discover.js';
@@ -71,20 +72,38 @@ export async function run(args) {
 
     for (const entry of projectEntries) {
       const conversation = await parseConversation(entry.path);
+      let filtered;
+      try {
+        filtered = filterTurns(conversation, {
+          userOnly: args['user-only'],
+          skipTurns: args['skip-turns'] ?? 0,
+          limitTurns: args['limit-turns'],
+        });
+      } catch (err) {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      }
       const slug = uniqueSlug(makeSlug(conversation), entry.sessionId, usedSlugs);
       usedSlugs.add(slug);
 
       const includeTimestamps = !args['exclude-timestamps'];
       const includeSkillText = args['include-skill-text'];
-      const defaultOutput = formatMarkdown(conversation, { includeTimestamps, includeSkillText });
-      const fullOutput = formatMarkdown(conversation, { includeAll: true, includeSkillText });
+      const defaultOutput = formatMarkdown(filtered, { includeTimestamps, includeSkillText });
 
       await writeFile(join(projectDir, `${slug}.md`), defaultOutput);
-      await writeFile(join(projectDir, `${slug}.full.md`), fullOutput);
-
-      console.error(`  [${folderName}] ${slug}.md + .full.md`);
       sessionCount++;
-      fileCount += 2;
+      fileCount++;
+
+      // .full.md (--include-all) is redundant when --user-only is set —
+      // assistant/tools/thinking are gone, both files would be identical.
+      if (args['user-only']) {
+        console.error(`  [${folderName}] ${slug}.md`);
+      } else {
+        const fullOutput = formatMarkdown(filtered, { includeAll: true, includeSkillText });
+        await writeFile(join(projectDir, `${slug}.full.md`), fullOutput);
+        fileCount++;
+        console.error(`  [${folderName}] ${slug}.md + .full.md`);
+      }
     }
   }
 

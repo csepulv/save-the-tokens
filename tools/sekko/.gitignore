@@ -30,3 +30,5 @@ build
 .test-output
 .dev-traces
 .dev-extracts
+sekko-output
+sekko-extract

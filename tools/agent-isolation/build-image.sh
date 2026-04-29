@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-image.sh — Build the dark factory agent Docker image.
+# build-image.sh — Build the michi agent Docker image.
 #
 # Passes host UID/GID so bind-mount files have correct ownership.
 # Usage: ./build-image.sh [--no-cache]

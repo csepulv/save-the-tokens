@@ -54,6 +54,7 @@
     "@deepgram/sdk": "^4.11.3",
     "commander": "^14.0.3",
     "dotenv": "^17.4.0",
+    "har-sanitizer": "^2.0.0",
     "js-yaml": "^4.1.1",
     "node-pty": "^1.1.0",
     "playwright": "^1.58.2",

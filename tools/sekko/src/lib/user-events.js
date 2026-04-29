@@ -152,17 +152,23 @@ export function startEventPolling(context, intervalMs = 500) {
   const events = [];
 
   const timer = setInterval(async () => {
-    try {
-      for (const page of context.pages()) {
+    // Poll each page independently. A privileged page (chrome://) or a
+    // page that's closing throws on page.evaluate; without per-page
+    // try/catch, one failing page poisons the loop and we miss events
+    // from the OTHER pages too. Found this when a chrome://new-tab-page/
+    // tab was open alongside the recorded page and zero events landed.
+    for (const page of context.pages()) {
+      try {
         const batch = await page.evaluate(() => {
           const e = window.__sekko_events || [];
           window.__sekko_events = [];
           return e;
         });
         events.push(...batch);
+      } catch {
+        // page may be closing or be a chrome://-style privileged URL
+        // where addInitScript / evaluate are forbidden — skip silently
       }
-    } catch {
-      // page may be closing — ignore
     }
   }, intervalMs);
 
@@ -172,6 +178,13 @@ export function startEventPolling(context, intervalMs = 500) {
     },
     getEvents() {
       return events;
+    },
+    // Inject a synthetic event into the captured stream. Used by trace.js
+    // to record actions that happen outside any page DOM — most importantly,
+    // extension popups opening via toolbar-icon click (which can't be
+    // captured via page event listeners).
+    inject(event) {
+      events.push(event);
     },
   };
 }
