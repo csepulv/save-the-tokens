@@ -1,6 +1,6 @@
 {
   "name": "sekko",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Capture browser and terminal sessions; extract structured artifacts AI agents can read.",
   "type": "module",
   "bin": {
