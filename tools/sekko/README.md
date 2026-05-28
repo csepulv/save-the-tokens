@@ -172,6 +172,7 @@ sekko record-web https://your-app.com --save-auth auth-state.json     # save log
 | `--connect [url]` | Attach to a running Chrome via CDP instead of launching one | `http://127.0.0.1:9222` when passed (IPv4; Chrome's debug port doesn't listen on IPv6 by default) |
 | `--viewport <wxh>` | Fixed viewport size (e.g., `1920x1080`) | track window |
 | `--system-screenshots` | Use full-window system screencaptures (1Hz) instead of Playwright page-area screenshots — needed to capture extension popups | off |
+| `--trace-extensions` | Comprehensive extension recording: enables system screenshots **and** captures network (with bodies) from all extension targets (popup, sidepanel, options, service worker). Requires `--load-extension` or `--connect`. | off |
 | `--no-sanitize` | Skip HAR sanitization. Default redacts cookies, auth headers, query/body tokens, and known credential patterns (Bearer/JWT, AWS keys, GitHub tokens, basic-auth in URLs, DB connection strings, private-key blocks) | sanitize on |
 | `--narrate` | Record voice-over audio (requires SoX) | off |
 | `--keyterm <terms>` | Domain-specific terms for transcription accuracy (comma-separated) | — |
@@ -415,6 +416,70 @@ With `--system-screenshots`:
 If sekko can't derive window bounds (rare; e.g., page evaluation
 fails before bounds are computed), it falls back to capturing the
 full display.
+
+#### Comprehensive extension recording with `--trace-extensions`
+
+`--system-screenshots` shows the popup; it doesn't tell you what
+the popup or service worker called over the network. For
+end-to-end extension testing, use `--trace-extensions` — a single
+preset that turns on system screenshots **and** captures network
+from every extension target (popup, sidepanel, options, service
+worker), bodies included.
+
+```bash
+# Common case: extension you build, sekko launches Chromium with it
+sekko record-web https://your-app.com \
+  --profile ext-dev \
+  --load-extension ~/code/my-ext/dist \
+  --trace-extensions
+
+# CF-protected case: extension already installed in a running Canary
+# (https://chatgpt.com, https://claude.ai, etc.)
+sekko record-web https://chatgpt.com \
+  --connect \
+  --trace-extensions
+```
+
+`--trace-extensions` requires either `--load-extension` (sekko
+launches a browser with the extension) or `--connect` (sekko
+attaches to a running browser that already has extensions
+installed). Without one of those it errors with a friendly message
+naming the fix.
+
+What it captures:
+
+- **System screenshots** (implicit; same as `--system-screenshots`).
+- **Service-worker network** — every fetch the background SW makes,
+  including request/response bodies. Tagged `origin: 'service-worker'`
+  in `network-detail.json`.
+- **Popup, sidepanel, options network** — same mechanism, tagged
+  `origin: 'popup'` / `'sidepanel'` / `'options'` / `'extension'`.
+- **Page network** stays as today, tagged `origin: 'page'`.
+
+`network.md` adds an Origin column when extension entries are
+present. `summary.md` shows the breakdown:
+"50 requests (12 page, 30 service-worker, 8 popup)".
+
+Service-worker entries don't correlate to user actions — SW work is
+event-driven (alarms, content-script messages, network listeners),
+so attributing it to whatever click happened to be closest in time
+would mislead. Their `actionIndex` stays `null` and they don't
+appear in any action's `Requests` column. Popup/sidepanel/options
+entries DO correlate.
+
+Sanitization (the same redaction pipeline as HAR — cookies,
+Authorization, query/body tokens, AWS keys, etc.) applies to
+extension network too. `--no-sanitize` disables it.
+
+### Recipe table
+
+| Use case | Flags |
+|---|---|
+| Record a web app, no extension | (no flags) |
+| Same on a CF-protected site | `--connect` |
+| Record your extension end-to-end (the common case) | `--load-extension <path> --profile <name> --trace-extensions` |
+| Same against a Canary you've already set up | `--connect --trace-extensions` |
+| Just full-window shots, no extension network | `--system-screenshots` |
 
 ### `sekko record-terminal`
 

@@ -71,6 +71,8 @@ describe('planTraceLaunch', () => {
       warnings: [],
       useAuth: false,
       useSaveAuth: false,
+      useSystemScreenshots: false,
+      traceExtensions: false,
     });
   });
 
@@ -216,5 +218,48 @@ describe('planTraceLaunch — connect mode', () => {
     expect(plan.warnings).toHaveLength(2);
     expect(plan.warnings[0]).toMatch(/--viewport.*ignored/);
     expect(plan.warnings[1]).toMatch(/--no-sanitize.*no effect/);
+  });
+});
+
+describe('planTraceLaunch — --trace-extensions preset', () => {
+  test('--trace-extensions without source throws with helpful message', () => {
+    expect(() => planTraceLaunch({ traceExtensions: true }))
+      .toThrow(/--trace-extensions requires either --load-extension.*or --connect/);
+  });
+
+  test('--trace-extensions with --load-extension + --profile is valid', () => {
+    const plan = planTraceLaunch({
+      traceExtensions: true,
+      loadExtension: '/some/ext',
+      profile: 'ext-dev',
+    });
+    expect(plan.traceExtensions).toBe(true);
+    expect(plan.useSystemScreenshots).toBe(true); // implicit
+    expect(plan.extensions).toEqual(['/some/ext']);
+  });
+
+  test('--trace-extensions with --connect is valid', () => {
+    const plan = planTraceLaunch({ traceExtensions: true, connect: true });
+    expect(plan.traceExtensions).toBe(true);
+    expect(plan.useSystemScreenshots).toBe(true);
+    expect(plan.mode).toBe('connect');
+  });
+
+  test('--trace-extensions implies --system-screenshots', () => {
+    // Even without explicit --system-screenshots, the preset enables it.
+    const plan = planTraceLaunch({ traceExtensions: true, connect: true });
+    expect(plan.useSystemScreenshots).toBe(true);
+  });
+
+  test('--system-screenshots without --trace-extensions still works', () => {
+    const plan = planTraceLaunch({ systemScreenshots: true });
+    expect(plan.useSystemScreenshots).toBe(true);
+    expect(plan.traceExtensions).toBe(false);
+  });
+
+  test('plan exposes traceExtensions: false when flag not set', () => {
+    const plan = planTraceLaunch({});
+    expect(plan.traceExtensions).toBe(false);
+    expect(plan.useSystemScreenshots).toBe(false);
   });
 });

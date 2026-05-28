@@ -166,3 +166,117 @@ test('includes duration in frontmatter', () => {
   const result = formatText(conv);
   expect(result).toContain('duration: 1h');
 });
+
+// --- AskUserQuestion rendering ---
+
+function auqConversation() {
+  return {
+    metadata: {
+      sessionId: 'auq-fixture',
+      project: 'test',
+      customTitle: null,
+      sourcePath: '/test.jsonl',
+      exportDate: '2026-05-08T12:00:00Z',
+      hostname: 'h',
+      cwd: '/test',
+      gitBranch: 'main',
+      claudeVersion: '2.1',
+      permissionMode: 'default',
+      startedAt: '2026-05-08T12:00:00Z',
+      endedAt: '2026-05-08T12:00:05Z',
+    },
+    messages: [
+      { role: 'user', text: ['help me name a thing'], toolCalls: [], toolResults: [], thinking: [] },
+      {
+        role: 'assistant',
+        text: ['Couple of choices to make.'],
+        toolCalls: [],
+        toolResults: [],
+        thinking: [],
+        questions: [
+          {
+            header: 'Casing',
+            question: 'Casing?',
+            multiSelect: false,
+            selected: 'camelCase',
+            options: [
+              { label: 'camelCase', description: 'Single word, internal capitals.' },
+              { label: 'snake_case', description: 'Lowercase with underscores.' },
+            ],
+          },
+        ],
+      },
+      {
+        role: 'user',
+        text: [],
+        toolCalls: [],
+        toolResults: [],
+        thinking: [],
+        answers: [
+          {
+            header: 'Casing',
+            question: 'Casing?',
+            multiSelect: false,
+            selected: 'camelCase',
+            options: [
+              { label: 'camelCase', description: 'Single word, internal capitals.' },
+              { label: 'snake_case', description: 'Lowercase with underscores.' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+test('AUQ default text: renders Q and A with header', () => {
+  const result = formatText(auqConversation());
+  expect(result).toContain('Q (Casing): Casing?');
+  expect(result).toContain('A (Casing): camelCase');
+  expect(result).not.toContain('snake_case');
+  expect(result).not.toContain('Single word, internal capitals.');
+});
+
+test('AUQ default text: user-with-only-answers turn renders', () => {
+  const result = formatText(auqConversation());
+  const userBlocks = result.match(/=== USER ===/g) ?? [];
+  expect(userBlocks.length).toBe(2);
+});
+
+test('AUQ --include-all text: shows full options with selection marked', () => {
+  const result = formatText(auqConversation(), { includeAll: true });
+  expect(result).toContain('Q (Casing): Casing?');
+  expect(result).toContain('camelCase');
+  expect(result).toContain('snake_case');
+  expect(result).toContain('Single word, internal capitals.');
+  // Selected option marked with [x]
+  expect(result).toMatch(/\[x\] camelCase/);
+  expect(result).toMatch(/\[ \] snake_case/);
+  // User-side echo with checkmark
+  expect(result).toContain('A (Casing): ✓ camelCase');
+});
+
+test('AUQ free-text answer renders Other in text', () => {
+  const conv = auqConversation();
+  conv.messages[1].questions[0].header = 'Location';
+  conv.messages[1].questions[0].question = 'Where should the file live?';
+  conv.messages[1].questions[0].selected = 'src/helpers/';
+  conv.messages[1].questions[0].notes = 'src/helpers/';
+  conv.messages[2].answers[0].header = 'Location';
+  conv.messages[2].answers[0].question = 'Where should the file live?';
+  conv.messages[2].answers[0].selected = 'src/helpers/';
+  conv.messages[2].answers[0].notes = 'src/helpers/';
+
+  const result = formatText(conv);
+  expect(result).toMatch(/A \(Location\): Other — "src\/helpers\/"/);
+});
+
+test('AUQ from real fixture renders both pairs in text default mode', async () => {
+  const conv = await parseConversation(fixture('auq.jsonl'));
+  const result = formatText(conv);
+
+  expect(result).toContain('Q (Casing): Casing?');
+  expect(result).toContain('A (Casing): camelCase');
+  expect(result).toContain('Q (Location): Where should the file live?');
+  expect(result).toMatch(/A \(Location\): Other — "src\/helpers\/"/);
+});

@@ -45,7 +45,7 @@ function validateOptions(skipTurns, limitTurns) {
 
 function applyUserOnly(messages) {
   return messages
-    .filter((m) => m.role === 'user' && m.text.length > 0)
+    .filter((m) => m.role === 'user' && (m.text.length > 0 || (m.answers?.length ?? 0) > 0))
     .map((m) => ({ ...m, toolResults: [] }));
 }
 

@@ -26,6 +26,46 @@ function formatToolCall(call, result) {
   return lines.join('\n');
 }
 
+function selectionMatchesOption(selected, options) {
+  return Array.isArray(options) && options.some((o) => o.label === selected);
+}
+
+function formatQuestion(q, includeAll) {
+  const headerPart = q.header ? ` (${q.header})` : '';
+  const lines = [`**Q${headerPart}:** ${q.question ?? ''}`];
+
+  if (includeAll && Array.isArray(q.options) && q.options.length > 0) {
+    lines.push('');
+    const matched = selectionMatchesOption(q.selected, q.options);
+    for (const opt of q.options) {
+      const isPicked = matched && opt.label === q.selected;
+      const label = isPicked ? `**${opt.label}**` : opt.label;
+      const desc = opt.description ? ` — ${opt.description}` : '';
+      lines.push(`- ${label}${desc}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function formatAnswer(a, includeAll) {
+  const headerPart = a.header ? ` (${a.header})` : '';
+  const matched = selectionMatchesOption(a.selected, a.options);
+
+  if (!matched && a.notes) {
+    return `**A${headerPart}:** Other — "${a.notes}"`;
+  }
+  if (!matched) {
+    // Free-text without notes — render the selected text as-is.
+    return `**A${headerPart}:** ${a.selected ?? ''}`;
+  }
+
+  const checkmark = includeAll ? '✓ ' : '';
+  let line = `**A${headerPart}:** ${checkmark}${a.selected}`;
+  if (a.notes) line += ` — note: "${a.notes}"`;
+  return line;
+}
+
 function formatThinking(thought) {
   const lines = [];
   lines.push('<details>');
@@ -115,6 +155,22 @@ function formatMessage(message, options) {
     lines.push('');
   }
 
+  // AskUserQuestion: questions render on assistant turns, answers on user
+  // turns — regardless of include-tools/include-all (they're conversation,
+  // not tool traffic). includeAll expands the offered options under each Q.
+  if (message.role === 'assistant' && message.questions?.length > 0) {
+    for (const q of message.questions) {
+      lines.push(formatQuestion(q, includeAll));
+      lines.push('');
+    }
+  }
+  if (message.role === 'user' && message.answers?.length > 0) {
+    for (const a of message.answers) {
+      lines.push(formatAnswer(a, includeAll));
+      lines.push('');
+    }
+  }
+
   // Tool results on user messages (--include-all, when no tool calls to pair with)
   if (includeAll && message.role === 'user' && message.toolResults.length > 0 && message.toolCalls.length === 0) {
     for (const result of message.toolResults) {
@@ -195,8 +251,9 @@ export function formatMarkdown(conversation, options = {}) {
       continue;
     }
 
-    // Skip user messages that are only tool results (unless includeAll)
-    if (message.role === 'user' && message.text.length === 0) {
+    // Skip user messages that are only tool results (unless includeAll).
+    // User messages carrying AUQ answers are conversation — never skipped.
+    if (message.role === 'user' && message.text.length === 0 && (message.answers?.length ?? 0) === 0) {
       if (!effectiveOptions.includeAll || message.toolResults.length === 0) continue;
     }
 

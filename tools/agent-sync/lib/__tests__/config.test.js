@@ -239,6 +239,34 @@ targets:
       const result = getTargets(config);
       expect(result['claude-code'].skills).toBe(path.join(os.homedir(), 'custom/skills'));
     });
+
+    test('should default grantSkillPermissions to false on claude-code', () => {
+      expect(getTargets({})['claude-code'].grantSkillPermissions).toBe(false);
+    });
+
+    test('v1: should surface grant-skill-permissions as grantSkillPermissions', () => {
+      const config = {
+        targets: { 'claude-code': { 'grant-skill-permissions': true } }
+      };
+      const result = getTargets(config);
+      expect(result['claude-code'].grantSkillPermissions).toBe(true);
+      expect(result['claude-code']['grant-skill-permissions']).toBeUndefined();
+    });
+
+    test('v2: should surface grantSkillPermissions per instance', () => {
+      const config = {
+        version: 2,
+        targets: {
+          'claude-code': [
+            { 'grant-skill-permissions': true },
+            { name: 'work', 'config-dir': '~/.claude-work' }
+          ]
+        }
+      };
+      const result = getTargets(config);
+      expect(result['claude-code'].grantSkillPermissions).toBe(true);
+      expect(result['claude-code:work'].grantSkillPermissions).toBe(false);
+    });
   });
 
   describe('getSkillsTargets', () => {
@@ -887,6 +915,15 @@ plugins:
       });
       expect(result.skills).toBe(path.join(os.homedir(), 'custom/skills'));
       expect(result.rules).toBe(path.join(os.homedir(), 'custom/rules'));
+    });
+
+    test('should default grant-skill-permissions to false', () => {
+      expect(resolveClaudeCodeEntry({}).grantSkillPermissions).toBe(false);
+    });
+
+    test('should read grant-skill-permissions from the entry', () => {
+      const result = resolveClaudeCodeEntry({ 'grant-skill-permissions': true });
+      expect(result.grantSkillPermissions).toBe(true);
     });
   });
 

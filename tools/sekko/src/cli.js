@@ -25,6 +25,7 @@ export function run(argv) {
     .option('--connect [url]', 'attach to a running Chrome via CDP instead of launching one (default: http://127.0.0.1:9222)')
     .option('--viewport <wxh>', 'fixed viewport size (e.g., 1920x1080); default tracks the window')
     .option('--system-screenshots', 'use full-window screencaptures (1Hz) instead of Playwright page-area screenshots; needed to capture extension popups and browser chrome')
+    .option('--trace-extensions', 'comprehensive extension recording: enables system screenshots + captures network (with bodies) from all extension targets (popup, sidepanel, options, service worker). Requires --load-extension or --connect.')
     .option('--no-sanitize', 'skip HAR sanitization (default: redact cookies, auth headers, query/body tokens, and known credential patterns)')
     .option('--narrate', 'record voice-over audio during the session (requires SoX)')
     .option('--keyterm <terms>', 'domain-specific terms to improve transcription accuracy (comma-separated)')

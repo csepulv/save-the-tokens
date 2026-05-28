@@ -14,8 +14,17 @@ export function correlateActionAndNetworkCalls(actions, networkEntries, windowMs
     timestamp: action.timestamp,
   }));
 
-  // For each network entry, find the most recent action within the window
+  // For each network entry, find the most recent action within the window.
+  // Exception: service-worker entries are NOT correlated to user actions
+  // — SW activity is event-driven (alarms, content-script messages,
+  // network listeners), and attributing it to whatever action happened
+  // to be closest in time would be misleading. Their actionIndex stays
+  // null and they don't appear in any action's requestIds.
   const annotatedNetwork = networkEntries.map((entry) => {
+    if (entry.origin === 'service-worker') {
+      return { ...entry, actionIndex: null };
+    }
+
     const entryTime = new Date(entry.startedDateTime).getTime();
     let matchedAction = null;
 

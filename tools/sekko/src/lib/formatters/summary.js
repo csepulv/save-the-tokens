@@ -1,7 +1,7 @@
 /**
  * Generate a summary manifest describing all produced artifacts.
  */
-export function formatSummary({ actionCount, selectorCount, networkCount, screenshotCount, screenshotSource, narrationWordCount, outputDir }) {
+export function formatSummary({ actionCount, selectorCount, networkCount, networkOriginCounts, screenshotCount, screenshotSource, narrationWordCount, outputDir }) {
   const isSystemSource = screenshotSource === 'system';
   const screenshotsDescription = isSystemSource
     ? 'Full-window screenshots (browser chrome + page; includes extension popups), one per action'
@@ -9,6 +9,8 @@ export function formatSummary({ actionCount, selectorCount, networkCount, screen
   const screenshotsHowto = isSystemSource
     ? '6. **Screenshots** — `screenshots/action-NN.jpeg` shows the full browser window (including chrome and any extension popups visible) at the moment of each action. Source: system-level screencapture (1Hz during recording).'
     : '6. **Screenshots** — `screenshots/action-NN.jpeg` shows the page-area visual state at the moment of each action. Source: Playwright trace.';
+
+  const networkLine = formatNetworkLine(networkCount, networkOriginCounts);
 
   const lines = [
     '# Trace Extraction Summary',
@@ -20,7 +22,7 @@ export function formatSummary({ actionCount, selectorCount, networkCount, screen
     `| Artifact | Contents | Count |`,
     `|----------|----------|-------|`,
     `| [actions.md](./actions.md) | Chronological log of user actions with selectors and correlated network request IDs | ${actionCount} actions |`,
-    `| [network.md](./network.md) | HTTP request summary table with IDs, correlated to actions | ${networkCount} requests |`,
+    `| [network.md](./network.md) | HTTP request summary table with IDs, correlated to actions | ${networkLine} |`,
     `| [network-detail.json](./network-detail.json) | Full request/response bodies for each network entry (by ID) | ${networkCount} entries |`,
     `| [selectors.md](./selectors.md) | Unique selectors for interactive elements | ${selectorCount} selectors |`,
     `| [screenshots/](./screenshots/) | ${screenshotsDescription} | ${screenshotCount} images |`,
@@ -41,11 +43,25 @@ export function formatSummary({ actionCount, selectorCount, networkCount, screen
     '## Quick Reference',
     '',
     `- **Total actions:** ${actionCount}`,
-    `- **Total network requests:** ${networkCount}`,
+    `- **Total network requests:** ${networkLine}`,
     `- **Unique selectors:** ${selectorCount}`,
     `- **Screenshots:** ${screenshotCount} (source: ${isSystemSource ? 'system' : 'playwright'})`,
     ...(narrationWordCount ? [`- **Narration words:** ${narrationWordCount}`] : []),
   ];
 
   return lines.join('\n');
+}
+
+// Render the network count as either "N requests" or, when there's
+// extension capture, "N requests (M page, X service-worker, Y popup, …)"
+// so the consuming agent immediately sees how the requests break down
+// by source.
+function formatNetworkLine(total, originCounts) {
+  if (!originCounts) return `${total} requests`;
+  const nonPage = Object.entries(originCounts).filter(([k]) => k !== 'page');
+  if (nonPage.length === 0) return `${total} requests`;
+  const parts = Object.entries(originCounts)
+    .filter(([_, n]) => n > 0)
+    .map(([k, n]) => `${n} ${k}`);
+  return `${total} requests (${parts.join(', ')})`;
 }

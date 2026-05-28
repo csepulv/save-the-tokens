@@ -16,15 +16,31 @@ export function formatNetwork(detailEntries) {
     return lines.join('\n');
   }
 
-  lines.push('| ID | Method | URL | Status | Duration | Type | Action |');
-  lines.push('|----|--------|-----|--------|----------|------|--------|');
+  // Show Origin column only when we have something other than 'page'.
+  // Keeps existing recordings' tables unchanged when no extension capture
+  // ran.
+  const hasNonPageOrigin = detailEntries.some(
+    (e) => e.origin && e.origin !== 'page'
+  );
+
+  if (hasNonPageOrigin) {
+    lines.push('| ID | Origin | Method | URL | Status | Duration | Type | Action |');
+    lines.push('|----|--------|--------|-----|--------|----------|------|--------|');
+  } else {
+    lines.push('| ID | Method | URL | Status | Duration | Type | Action |');
+    lines.push('|----|--------|-----|--------|----------|------|--------|');
+  }
 
   for (const e of detailEntries) {
     const url = truncateUrl(e.url, 80);
     const duration = e.durationMs ? `${Math.round(e.durationMs)}ms` : '—';
     const mimeType = e.mimeType ? simplifyMime(e.mimeType) : '—';
     const action = e.actionIndex ? `#${e.actionIndex}` : '—';
-    lines.push(`| ${e.id} | ${e.method} | ${url} | ${e.status} | ${duration} | ${mimeType} | ${action} |`);
+    if (hasNonPageOrigin) {
+      lines.push(`| ${e.id} | ${e.origin || 'page'} | ${e.method} | ${url} | ${e.status} | ${duration} | ${mimeType} | ${action} |`);
+    } else {
+      lines.push(`| ${e.id} | ${e.method} | ${url} | ${e.status} | ${duration} | ${mimeType} | ${action} |`);
+    }
   }
 
   return lines.join('\n');

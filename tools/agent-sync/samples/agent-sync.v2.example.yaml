@@ -18,11 +18,13 @@ config-directory: ~/ai-config/merged
 targets:
   claude-code:
     - mcp: true                          # "default" instance, uses ~/.claude
+      grant-skill-permissions: true      # pre-approve synced skills in ~/.claude/settings.json
 
     # Uncomment to add a second Claude Code instance:
     # - name: work
     #   config-dir: ~/.claude-work       # Skills → ~/.claude-work/skills, rules → ~/.claude-work/rules
     #   mcp: true                        # MCP sync uses CLAUDE_CONFIG_DIR=~/.claude-work
+    #   grant-skill-permissions: true    # writes ~/.claude-work/settings.json
 
   codex:
     skills: ~/.codex/skills

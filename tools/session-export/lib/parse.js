@@ -55,20 +55,22 @@ function summarizeToolCall(name, input) {
   return `[${name}: ${inputStr.slice(0, 200)}]`;
 }
 
-function extractContent(content, externalToolNameMap = {}) {
+function extractContent(content, externalToolNameMap = {}, auqTracker = null) {
   const text = [];
   const toolCalls = [];
   const toolResults = [];
   const thinking = [];
   const toolNameMap = {};
+  const questions = [];
+  const auqResultIds = [];
 
   if (typeof content === 'string') {
     if (content.trim()) text.push(content);
-    return { text, toolCalls, toolResults, thinking, toolNameMap };
+    return { text, toolCalls, toolResults, thinking, toolNameMap, questions, auqResultIds };
   }
 
   if (!Array.isArray(content)) {
-    return { text, toolCalls, toolResults, thinking, toolNameMap };
+    return { text, toolCalls, toolResults, thinking, toolNameMap, questions, auqResultIds };
   }
 
   for (const block of content) {
@@ -86,12 +88,23 @@ function extractContent(content, externalToolNameMap = {}) {
     } else if (btype === 'tool_use') {
       const name = block.name ?? '?';
       const input = block.input ?? {};
+      if (name === 'AskUserQuestion') {
+        const inputQuestions = Array.isArray(input.questions) ? input.questions : [];
+        questions.push(...inputQuestions);
+        if (block.id && auqTracker) auqTracker.add(block.id);
+        continue;
+      }
       toolCalls.push(summarizeToolCall(name, input));
       if (block.id) toolNameMap[block.id] = name;
     } else if (btype === 'thinking') {
       const t = block.thinking ?? '';
       if (t.trim()) thinking.push(t);
     } else if (btype === 'tool_result') {
+      const toolId = block.tool_use_id ?? '';
+      if (toolId && auqTracker?.has(toolId)) {
+        auqResultIds.push(toolId);
+        continue;
+      }
       let resultContent = block.content ?? '';
       if (Array.isArray(resultContent)) {
         resultContent = resultContent
@@ -100,14 +113,33 @@ function extractContent(content, externalToolNameMap = {}) {
           .join(' ');
       }
       if (resultContent && typeof resultContent === 'string') {
-        const toolId = block.tool_use_id ?? '';
         const toolName = toolNameMap[toolId] ?? externalToolNameMap[toolId] ?? 'Tool';
         toolResults.push({ toolName, content: resultContent });
       }
     }
   }
 
-  return { text, toolCalls, toolResults, thinking, toolNameMap };
+  return { text, toolCalls, toolResults, thinking, toolNameMap, questions, auqResultIds };
+}
+
+function buildAnswers(toolUseResult) {
+  if (!toolUseResult || typeof toolUseResult !== 'object') return [];
+  const questions = Array.isArray(toolUseResult.questions) ? toolUseResult.questions : [];
+  const answers = toolUseResult.answers ?? {};
+  const annotations = toolUseResult.annotations ?? {};
+
+  return questions.map((q) => {
+    const entry = {
+      header: q.header ?? '',
+      question: q.question ?? '',
+      multiSelect: q.multiSelect ?? false,
+      options: Array.isArray(q.options) ? q.options : [],
+      selected: answers[q.question] ?? '',
+    };
+    const notes = annotations[q.question]?.notes;
+    if (notes) entry.notes = notes;
+    return entry;
+  });
 }
 
 
@@ -191,6 +223,9 @@ export async function parseConversation(jsonlPath, deps = {}) {
 
   // Track tool name mappings across all messages for tool_result resolution
   const globalToolNameMap = {};
+  // Track AskUserQuestion tool_use_ids so matching tool_results promote to
+  // structured `answers` instead of generic toolResults.
+  const auqTracker = new Set();
 
   for (const line of lines) {
     const record = JSON.parse(line);
@@ -269,8 +304,31 @@ export async function parseConversation(jsonlPath, deps = {}) {
 
     const msg = record.message ?? record;
     const content = msg.content ?? '';
-    const { text, toolCalls, toolResults, thinking, toolNameMap } = extractContent(content, globalToolNameMap);
+    const { text, toolCalls, toolResults, thinking, toolNameMap, questions, auqResultIds } =
+      extractContent(content, globalToolNameMap, auqTracker);
     Object.assign(globalToolNameMap, toolNameMap);
+
+    const answers = auqResultIds.length > 0 ? buildAnswers(record.toolUseResult) : [];
+
+    // When we just built answers, stash `selected` (and `notes`) onto the
+    // matching question on the preceding assistant message so the formatter
+    // can render the offered options with the picked option marked, without
+    // needing back-references between messages.
+    if (answers.length > 0) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const prev = messages[i];
+        if (prev.role !== 'assistant') continue;
+        if (!prev.questions || prev.questions.length === 0) continue;
+        prev.questions = prev.questions.map((q) => {
+          const match = answers.find((a) => a.question === q.question);
+          if (!match) return q;
+          const updated = { ...q, selected: match.selected };
+          if (match.notes) updated.notes = match.notes;
+          return updated;
+        });
+        break;
+      }
+    }
 
     // Transform user text: drop caveat/stdout noise, rewrite slash commands
     // as compact one-liners, truncate injected skill bodies to their first
@@ -278,17 +336,20 @@ export async function parseConversation(jsonlPath, deps = {}) {
     let finalText = text;
     if (type === 'user') {
       finalText = text.map(transformUserText).filter((t) => t !== null);
-      if (finalText.length === 0 && toolResults.length === 0) continue;
+      if (finalText.length === 0 && toolResults.length === 0 && answers.length === 0) continue;
     }
 
-    messages.push({
+    const message = {
       role: type,
       text: finalText,
       toolCalls,
       toolResults,
       thinking,
       timestamp: ts ?? null,
-    });
+    };
+    if (questions.length > 0) message.questions = questions;
+    if (answers.length > 0) message.answers = answers;
+    messages.push(message);
 
     // Inject subagent conversation after Agent tool_use (new file-based format)
     if (type === 'assistant' && subagentFiles.length > 0 && Array.isArray(msg.content)) {
@@ -334,8 +395,14 @@ export function mergeConsecutiveAssistant(messages) {
 
   for (const msg of messages) {
     // User messages that are only tool results (no text) get absorbed
-    // into the preceding assistant message
-    if (msg.role === 'user' && msg.text.length === 0 && msg.toolResults.length > 0) {
+    // into the preceding assistant message — but not if they carry
+    // AskUserQuestion answers, which are conversation content.
+    if (
+      msg.role === 'user' &&
+      msg.text.length === 0 &&
+      msg.toolResults.length > 0 &&
+      (msg.answers?.length ?? 0) === 0
+    ) {
       const prev = merged[merged.length - 1];
       if (prev?.role === 'assistant') {
         prev.toolResults = prev.toolResults.concat(msg.toolResults);
@@ -350,6 +417,9 @@ export function mergeConsecutiveAssistant(messages) {
         prev.toolCalls = prev.toolCalls.concat(msg.toolCalls);
         prev.toolResults = prev.toolResults.concat(msg.toolResults);
         prev.thinking = prev.thinking.concat(msg.thinking);
+        if (msg.questions?.length > 0) {
+          prev.questions = (prev.questions ?? []).concat(msg.questions);
+        }
         continue;
       }
     }

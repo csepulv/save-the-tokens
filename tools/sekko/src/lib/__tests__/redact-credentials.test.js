@@ -41,6 +41,71 @@ describe('redactCredentials', () => {
       .toBe('mongodb://[REDACTED]@mongo.host:27017/db');
   });
 
+  describe('JWT redaction', () => {
+    // JWTs surface in extension network response bodies (Clerk session
+    // tokens, OAuth id_tokens, etc.) under various field names. The
+    // structural pattern catches them regardless of where they sit.
+
+    const sampleJwt =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9' +
+      '.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0' +
+      '.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+
+    test('redacts a bare JWT in plain text', () => {
+      expect(redactCredentials(`token: ${sampleJwt}`)).toContain('[REDACTED JWT]');
+      expect(redactCredentials(`token: ${sampleJwt}`)).not.toContain(sampleJwt);
+    });
+
+    test('redacts a JWT inside a JSON value', () => {
+      const json = `{"jwt":"${sampleJwt}","other":"safe"}`;
+      const out = redactCredentials(json);
+      expect(out).not.toContain(sampleJwt);
+      expect(out).toContain('[REDACTED JWT]');
+      expect(out).toContain('"other":"safe"');
+    });
+
+    test('redacts a JWT in a URL query string', () => {
+      const url = `https://api.example.com/x?id_token=${sampleJwt}&q=1`;
+      const out = redactCredentials(url);
+      expect(out).not.toContain(sampleJwt);
+      expect(out).toContain('[REDACTED JWT]');
+      expect(out).toContain('q=1');
+    });
+
+    test('redacts JWTs nested inside a Clerk-shaped JSON response', () => {
+      // Mirrors the actual leak found in trace.zip page entries during
+      // the trace-extensions M1 smoke (Clerk /v1/client response).
+      const body = `{"sessions":[{"last_active_token":{"jwt":"${sampleJwt}"}}]}`;
+      const out = redactCredentials(body);
+      expect(out).not.toContain(sampleJwt);
+      expect(out).toContain('[REDACTED JWT]');
+    });
+
+    test('redacts multiple JWTs in the same text', () => {
+      const a = sampleJwt;
+      const b = sampleJwt.replace('JohnDoe', 'JaneDoe');
+      const out = redactCredentials(`first: ${a} second: ${b}`);
+      expect(out).not.toContain(a);
+      expect(out).not.toContain(b);
+      const matches = out.match(/\[REDACTED JWT\]/g) || [];
+      expect(matches.length).toBe(2);
+    });
+
+    test('does NOT redact a 2-segment string (incomplete; not a real JWT)', () => {
+      // JWT requires three dot-separated segments. A 2-segment string
+      // starting with eyJ is not a JWT.
+      const incomplete = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ';
+      expect(redactCredentials(incomplete)).toBe(incomplete);
+    });
+
+    test('does NOT redact short eyJ-prefixed strings without segments', () => {
+      // Bare base64 starting with eyJ but no dot-separated segments
+      // shouldn't match.
+      expect(redactCredentials('eyJfoo')).toBe('eyJfoo');
+      expect(redactCredentials('hello eyJabc world')).toBe('hello eyJabc world');
+    });
+  });
+
   test('does not redact non-matching text', () => {
     const safe = 'This is a normal command output\nwith no secrets at all\nHOST=localhost PORT=3000';
     // HOST and PORT don't match TOKEN|SECRET|PASSWORD|API_KEY patterns

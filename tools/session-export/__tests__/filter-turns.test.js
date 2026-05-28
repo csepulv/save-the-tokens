@@ -154,6 +154,31 @@ test('userOnly strips toolResults from surviving user messages', () => {
   expect(result.messages[0].text).toEqual(['q1']);
 });
 
+test('userOnly keeps user messages carrying AskUserQuestion answers (no prose)', () => {
+  // AUQ answers are user input — they should survive userOnly even though
+  // the message has empty text.
+  const conv = makeConversation([
+    makeMessage('user', 'q1'),
+    makeMessage('assistant', 'a1'),
+    makeMessage('user', [], {
+      answers: [{
+        header: 'Casing',
+        question: 'Casing?',
+        selected: 'camelCase',
+        options: [{ label: 'camelCase', description: '' }],
+        multiSelect: false,
+      }],
+    }),
+  ]);
+
+  const result = filterTurns(conv, { userOnly: true });
+
+  expect(result.messages).toHaveLength(2);
+  expect(result.messages[0].text).toEqual(['q1']);
+  expect(result.messages[1].answers?.length).toBe(1);
+  expect(result.messages[1].answers[0].selected).toBe('camelCase');
+});
+
 // --- skipTurns ---
 
 test('skipTurns skips first N user/assistant turns', () => {

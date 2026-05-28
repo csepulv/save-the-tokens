@@ -6,12 +6,14 @@ import path from 'path';
 import {
   getSkillsDirectory,
   getSkillsTargets,
+  getTargets,
   loadMergedSkillsDirectory,
   loadSkillsDirectoryFromSource,
   saveSkillsDirectoryToSource
 } from './config.js';
 import crypto from 'crypto';
 import { listSubdirectoryNames } from './io.js';
+import { syncSkillPermissions } from './permissions.js';
 import { withFallback } from './utils.js';
 
 /**
@@ -300,6 +302,39 @@ export async function syncToTarget(targetName, targetPath, config, options = {},
 }
 
 /**
+ * Grant skill permissions to the claude-code targets among `targetNames`
+ * that opted in via `grant-skill-permissions: true`. Non-claude-code
+ * targets and targets without the flag are skipped.
+ * @param {object} config - Config object
+ * @param {string[]} targetNames - Names of targets that were synced
+ * @param {string[]} skillNames - Skill directory names that were synced
+ * @param {object} options - Sync options ({ clean, dryRun })
+ * @param {object} [deps] - Optional dependencies for testing
+ */
+export async function grantSkillPermissions(config, targetNames, skillNames, options = {}, deps = {}) {
+  const {
+    getTargets: doGetTargets = getTargets,
+    syncSkillPermissions: doGrant = syncSkillPermissions
+  } = deps;
+
+  const targets = doGetTargets(config);
+
+  for (const name of targetNames) {
+    const def = targets[name];
+    if (!def || !name.startsWith('claude-code') || !def.grantSkillPermissions) continue;
+
+    const result = await doGrant(config, name, skillNames, options, deps);
+    if (!result) continue;
+    if (result.added.length > 0) {
+      console.log(`  ${name}: granted ${result.added.length} permission(s) in settings.json`);
+    }
+    if (result.removed.length > 0) {
+      console.log(`  ${name}: pruned ${result.removed.length} orphaned permission(s)`);
+    }
+  }
+}
+
+/**
  * Sync skills to all targets
  * @param {object} config - Config object with source-directories and config-directory
  * @param {object} options - Sync options
@@ -316,7 +351,8 @@ export async function syncAll(config, options = {}, deps = {}) {
     listSubdirectoryNames: listSubdirs = listSubdirectoryNames,
     groupSkillsBySource: doGroup = groupSkillsBySource,
     updateSourceHashes: doUpdateHashes = updateSourceHashes,
-    computeSkillHash: computeHash = computeSkillHash
+    computeSkillHash: computeHash = computeSkillHash,
+    grantSkillPermissions: doGrantPermissions = grantSkillPermissions
   } = deps;
 
   const targets = doGetTargets();
@@ -356,6 +392,9 @@ export async function syncAll(config, options = {}, deps = {}) {
   const merged = await loadMerged(config, deps);
   const skillsBySource = doGroup(merged.skills, skillDirs);
   await doUpdateHashes(skillsBySource, skillHashes, deps);
+
+  // Grant skill permissions to claude-code targets that opted in
+  await doGrantPermissions(config, targetNames, skillDirs, options, deps);
 
   console.log('\nDone!');
 }

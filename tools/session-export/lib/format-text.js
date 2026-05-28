@@ -6,6 +6,44 @@ function truncate(text, maxLen = 500) {
   return text.slice(0, maxLen) + '...';
 }
 
+function selectionMatchesOption(selected, options) {
+  return Array.isArray(options) && options.some((o) => o.label === selected);
+}
+
+function formatQuestionLines(q, includeAll) {
+  const headerPart = q.header ? ` (${q.header})` : '';
+  const lines = [`Q${headerPart}: ${q.question ?? ''}`];
+
+  if (includeAll && Array.isArray(q.options) && q.options.length > 0) {
+    const matched = selectionMatchesOption(q.selected, q.options);
+    for (const opt of q.options) {
+      const isPicked = matched && opt.label === q.selected;
+      const marker = isPicked ? '[x]' : '[ ]';
+      const desc = opt.description ? ` — ${opt.description}` : '';
+      lines.push(`  ${marker} ${opt.label}${desc}`);
+    }
+  }
+
+  return lines;
+}
+
+function formatAnswerLine(a, includeAll) {
+  const headerPart = a.header ? ` (${a.header})` : '';
+  const matched = selectionMatchesOption(a.selected, a.options);
+
+  if (!matched && a.notes) {
+    return `A${headerPart}: Other — "${a.notes}"`;
+  }
+  if (!matched) {
+    return `A${headerPart}: ${a.selected ?? ''}`;
+  }
+
+  const checkmark = includeAll ? '✓ ' : '';
+  let line = `A${headerPart}: ${checkmark}${a.selected}`;
+  if (a.notes) line += ` — note: "${a.notes}"`;
+  return line;
+}
+
 export function formatText(conversation, options = {}) {
   const opts = normalizeFormatOptions(options);
 
@@ -82,14 +120,27 @@ export function formatText(conversation, options = {}) {
       }
     }
 
+    // AskUserQuestion: questions on assistant turns, answers on user turns —
+    // always rendered (conversation, not tool traffic).
+    if (message.role === 'assistant' && message.questions?.length > 0) {
+      for (const q of message.questions) {
+        lines.push(...formatQuestionLines(q, opts.includeAll));
+      }
+    }
+    if (message.role === 'user' && message.answers?.length > 0) {
+      for (const a of message.answers) {
+        lines.push(formatAnswerLine(a, opts.includeAll));
+      }
+    }
+
     if (opts.includeAll) {
       for (const result of message.toolResults) {
         lines.push(`  [Result for ${result.toolName}: ${result.content}]`);
       }
     }
 
-    // Skip user messages with no text (tool-result-only turns)
-    if (message.role === 'user' && message.text.length === 0) {
+    // Skip user messages with no text and no answers (tool-result-only turns)
+    if (message.role === 'user' && message.text.length === 0 && (message.answers?.length ?? 0) === 0) {
       if (opts.includeAll && message.toolResults.length > 0) {
         const header = opts.includeTimestamps && message.timestamp
           ? `=== USER [${message.timestamp}] ===`

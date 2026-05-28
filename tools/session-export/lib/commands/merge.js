@@ -1,12 +1,12 @@
 import { existsSync } from 'node:fs';
-import { mkdir, copyFile, stat, utimes } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { listJsonlFiles } from '../discover.js';
 import {
-  listJsonlFiles,
-  findJsonlByExactTitle,
-  extractEncodedProjectDir,
-} from '../discover.js';
-import { resolveProjectName } from '../project-name.js';
+  resolveIdScope,
+  resolveProjectScope,
+  copySessionFile,
+} from '../session-files.js';
 import { loadConfig, resolveSource } from '../config.js';
 
 /**
@@ -57,16 +57,16 @@ export async function run(args) {
   let skipped = 0;
 
   for (const f of classified.missing) {
-    await copyOne(f);
+    await copySessionFile(f);
     copied++;
   }
   for (const f of classified.older) {
-    await copyOne(f);
+    await copySessionFile(f);
     copied++;
   }
   for (const f of conflicts) {
     if (args.force) {
-      await copyOne(f);
+      await copySessionFile(f);
       copied++;
     } else {
       // --skip-newer is the only way to reach here without halting above.
@@ -90,56 +90,21 @@ async function collectSourceFiles(args, sourceDir) {
   }
 
   if (args.id) {
-    return resolveSessionScope(args.id, sourceDir);
+    const matched = await resolveIdScope(args.id, sourceDir);
+    if (matched.length === 0) {
+      console.error(`Error: no session in source matches slug or id '${args.id}'.`);
+      process.exit(1);
+    }
+    return matched;
   }
 
-  // --project: exact display-name match
-  const allPaths = await listJsonlFiles(join(sourceDir, 'projects'));
-  const matched = [];
-  for (const p of allPaths) {
-    const encoded = extractEncodedProjectDir(p);
-    const project = encoded ? await resolveProjectName(encoded) : '';
-    if (project === args.project) matched.push(p);
-  }
+  // --project: exact display-name match, or anchored glob if it contains '*'
+  const matched = await resolveProjectScope(args.project, sourceDir);
   if (matched.length === 0) {
-    console.error(`Error: no sessions in project '${args.project}' (exact match against display name; run \`session-export list\` to see available project names).`);
+    console.error(`Error: no sessions in project '${args.project}' (run \`session-export list\` to see available project names).`);
     process.exit(1);
   }
   return matched;
-}
-
-// --session accepts a slug (custom title, exact match) or a session id
-// (exact filename match — full UUID, not a substring). Substring matching
-// would silently mask ambiguity in a destructive op.
-async function resolveSessionScope(query, sourceDir) {
-  // Exact id match — filename === `${query}.jsonl`
-  const allPaths = await listJsonlFiles(join(sourceDir, 'projects'));
-  const idMatches = allPaths.filter((p) => p.endsWith(`/${query}.jsonl`));
-  if (idMatches.length === 1) return idMatches;
-  if (idMatches.length > 1) {
-    // Same id under multiple encoded dirs — rare, but list and halt.
-    console.error(`Error: session id '${query}' appears in ${idMatches.length} projects. Pick one explicitly.`);
-    for (const p of idMatches) console.error(p);
-    process.exit(1);
-  }
-
-  // Otherwise treat as exact title (slug)
-  const titleMatches = await findJsonlByExactTitle(query, sourceDir);
-  if (titleMatches.length === 0) {
-    console.error(`Error: no session in source matches slug or id '${query}'.`);
-    process.exit(1);
-  }
-  if (titleMatches.length > 1) {
-    console.error(`Error: slug '${query}' matches ${titleMatches.length} sessions in source. Use a session id instead.\n`);
-    for (const p of titleMatches) {
-      const id = p.split('/').pop().replace('.jsonl', '');
-      const encoded = extractEncodedProjectDir(p);
-      const project = encoded ? await resolveProjectName(encoded) : '';
-      console.error(`${id}\t${project}`);
-    }
-    process.exit(1);
-  }
-  return titleMatches;
 }
 
 async function classify(sourceFiles, sourceDir, destDir) {
@@ -181,13 +146,4 @@ async function classify(sourceFiles, sourceDir, destDir) {
   }
 
   return { missing, older, conflict, equal };
-}
-
-async function copyOne(entry) {
-  await mkdir(dirname(entry.destPath), { recursive: true });
-  await copyFile(entry.sourcePath, entry.destPath);
-  // Preserve mtime so a re-run sees `equal`, not a false conflict.
-  // copyFile sets dest mtime to "now" by default; that would make every
-  // freshly-copied file look newer than its source on the next merge.
-  await utimes(entry.destPath, entry.sourceMtime, entry.sourceMtime);
 }

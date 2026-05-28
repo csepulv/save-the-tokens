@@ -66,7 +66,7 @@ export function getConfigVersion(config) {
 /**
  * Resolve a single claude-code array entry into expanded target properties.
  * @param {object} entry - A single element from the claude-code array
- * @returns {object} { name, configDir, skills, rules, mcp }
+ * @returns {object} { name, configDir, skills, rules, mcp, grantSkillPermissions }
  */
 export function resolveClaudeCodeEntry(entry = {}) {
   const name = entry.name || 'default';
@@ -74,7 +74,8 @@ export function resolveClaudeCodeEntry(entry = {}) {
   const skills = entry.skills ? expandPath(entry.skills) : path.join(configDir, 'skills');
   const rules = entry.rules ? expandPath(entry.rules) : path.join(configDir, 'rules');
   const mcp = entry.mcp || false;
-  return { name, configDir, skills, rules, mcp };
+  const grantSkillPermissions = entry['grant-skill-permissions'] || false;
+  return { name, configDir, skills, rules, mcp, grantSkillPermissions };
 }
 
 /**
@@ -193,6 +194,7 @@ export function getTargets(config) {
         skills: resolved.skills,
         rules: resolved.rules,
         mcp: resolved.mcp,
+        grantSkillPermissions: resolved.grantSkillPermissions,
         _configDir: resolved.configDir,
         _instanceName: resolved.name
       };
@@ -203,6 +205,10 @@ export function getTargets(config) {
     if (customTargets['claude-code'] && !Array.isArray(customTargets['claude-code'])) {
       Object.assign(merged['claude-code'], customTargets['claude-code']);
     }
+    // Normalize the kebab config key to the resolved camelCase property
+    merged['claude-code'].grantSkillPermissions =
+      merged['claude-code']['grant-skill-permissions'] || false;
+    delete merged['claude-code']['grant-skill-permissions'];
   }
 
   // Deep-merge non-claude-code custom targets
@@ -485,4 +491,26 @@ export async function loadMcpState(config, deps = {}) {
 export async function saveMcpState(config, state, deps = {}) {
   const configDir = getConfigDirectory(config);
   await saveJsonState(path.join(configDir, 'mcp-state.json'), state, deps);
+}
+
+/**
+ * Load skill-permissions state from config-directory/permissions-state.json
+ * Returns empty object if file doesn't exist
+ * @param {object} config - Config object
+ * @param {object} [deps] - Optional dependencies for testing
+ */
+export async function loadPermissionsState(config, deps = {}) {
+  const configDir = getConfigDirectory(config);
+  return loadJsonState(path.join(configDir, 'permissions-state.json'), deps);
+}
+
+/**
+ * Save skill-permissions state to config-directory/permissions-state.json
+ * @param {object} config - Config object
+ * @param {object} state - State object to save
+ * @param {object} [deps] - Optional dependencies for testing
+ */
+export async function savePermissionsState(config, state, deps = {}) {
+  const configDir = getConfigDirectory(config);
+  await saveJsonState(path.join(configDir, 'permissions-state.json'), state, deps);
 }

@@ -78,4 +78,51 @@ describe('correlateActionAndNetworkCalls', () => {
     expect(result.actions).toEqual([]);
     expect(result.network).toEqual([]);
   });
+
+  test('service-worker entries are not correlated to user actions', () => {
+    const actionTime = new Date('2026-01-01T00:00:01.000Z').getTime();
+    const actions = [{ type: 'click', timestamp: actionTime, selector: '#btn' }];
+    const network = [
+      // Page entry — should correlate
+      {
+        id: 1,
+        origin: 'page',
+        startedDateTime: '2026-01-01T00:00:01.500Z',
+        method: 'POST',
+        url: '/api/page',
+      },
+      // SW entry within the same window — should NOT correlate
+      {
+        id: 2,
+        origin: 'service-worker',
+        startedDateTime: '2026-01-01T00:00:01.500Z',
+        method: 'GET',
+        url: '/api/sw',
+      },
+    ];
+
+    const result = correlateActionAndNetworkCalls(actions, network);
+
+    expect(result.network[0].actionIndex).toBe(1);    // page → matched
+    expect(result.network[1].actionIndex).toBe(null); // SW → null
+    expect(result.actions[0].requestIds).toEqual([1]); // SW NOT in requestIds
+  });
+
+  test('popup entries do correlate (only SW is excluded)', () => {
+    const actionTime = new Date('2026-01-01T00:00:01.000Z').getTime();
+    const actions = [{ type: 'click', timestamp: actionTime, selector: '#btn' }];
+    const network = [
+      {
+        id: 1,
+        origin: 'popup',
+        startedDateTime: '2026-01-01T00:00:01.500Z',
+        method: 'POST',
+        url: '/api/popup',
+      },
+    ];
+
+    const result = correlateActionAndNetworkCalls(actions, network);
+    expect(result.network[0].actionIndex).toBe(1);
+    expect(result.actions[0].requestIds).toEqual([1]);
+  });
 });

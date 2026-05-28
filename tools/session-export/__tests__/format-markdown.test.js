@@ -431,3 +431,148 @@ test('includeAll does NOT imply includeSkillText', () => {
   const result = formatMarkdown(conv, { includeAll: true });
   expect(result).not.toContain('Full body goes on for many lines');
 });
+
+// --- AskUserQuestion rendering ---
+
+function auqConversation() {
+  return {
+    metadata: {
+      sessionId: 'auq-fixture',
+      project: 'test',
+      customTitle: null,
+      sourcePath: '/test.jsonl',
+      exportDate: '2026-05-08T12:00:00Z',
+      hostname: 'h',
+      cwd: '/test',
+      gitBranch: 'main',
+      claudeVersion: '2.1',
+      permissionMode: 'default',
+      startedAt: '2026-05-08T12:00:00Z',
+      endedAt: '2026-05-08T12:00:05Z',
+    },
+    messages: [
+      {
+        role: 'user',
+        text: ['help me name a thing'],
+        toolCalls: [],
+        toolResults: [],
+        thinking: [],
+      },
+      {
+        role: 'assistant',
+        text: ['Couple of choices to make.'],
+        toolCalls: [],
+        toolResults: [],
+        thinking: [],
+        questions: [
+          {
+            header: 'Casing',
+            question: 'Casing?',
+            multiSelect: false,
+            selected: 'camelCase',
+            options: [
+              { label: 'camelCase', description: 'Single word, internal capitals.' },
+              { label: 'snake_case', description: 'Lowercase with underscores.' },
+            ],
+          },
+        ],
+      },
+      {
+        role: 'user',
+        text: [],
+        toolCalls: [],
+        toolResults: [],
+        thinking: [],
+        answers: [
+          {
+            header: 'Casing',
+            question: 'Casing?',
+            multiSelect: false,
+            selected: 'camelCase',
+            options: [
+              { label: 'camelCase', description: 'Single word, internal capitals.' },
+              { label: 'snake_case', description: 'Lowercase with underscores.' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+test('AUQ default: renders Q with header on assistant, A with header on user', () => {
+  const result = formatMarkdown(auqConversation());
+
+  expect(result).toContain('**Q (Casing):** Casing?');
+  expect(result).toContain('**A (Casing):** camelCase');
+  expect(result).not.toContain('snake_case');
+  expect(result).not.toContain('Single word, internal capitals.');
+});
+
+test('AUQ default: still renders the assistant text content alongside questions', () => {
+  const result = formatMarkdown(auqConversation());
+  expect(result).toContain('Couple of choices to make.');
+});
+
+test('AUQ default: user-with-only-answers turn renders (not skipped)', () => {
+  const result = formatMarkdown(auqConversation());
+  const userBlocks = result.match(/\*\*User\*\*/g) ?? [];
+  expect(userBlocks.length).toBe(2);
+});
+
+test('AUQ --include-all: renders full options with selection bolded under question', () => {
+  const result = formatMarkdown(auqConversation(), { includeAll: true });
+
+  expect(result).toContain('**Q (Casing):** Casing?');
+  expect(result).toContain('camelCase');
+  expect(result).toContain('snake_case');
+  expect(result).toContain('Single word, internal capitals.');
+  expect(result).toContain('Lowercase with underscores.');
+  expect(result).toMatch(/\*\*camelCase\*\* — Single word/);
+  expect(result).toContain('**A (Casing):** ✓ camelCase');
+});
+
+function rewriteAsLocationOther(conv) {
+  conv.messages[1].questions[0].header = 'Location';
+  conv.messages[1].questions[0].question = 'Where should the file live?';
+  conv.messages[1].questions[0].selected = 'src/helpers/';
+  conv.messages[1].questions[0].notes = 'src/helpers/';
+  conv.messages[2].answers[0].header = 'Location';
+  conv.messages[2].answers[0].question = 'Where should the file live?';
+  conv.messages[2].answers[0].selected = 'src/helpers/';
+  conv.messages[2].answers[0].notes = 'src/helpers/';
+}
+
+test('AUQ free-text answer renders with notes', () => {
+  const conv = auqConversation();
+  rewriteAsLocationOther(conv);
+
+  const result = formatMarkdown(conv);
+  expect(result).toMatch(/\*\*A \(Location\):\*\* Other — "src\/helpers\/"/);
+});
+
+test('AUQ free-text answer with --include-all also renders Other on user side', () => {
+  const conv = auqConversation();
+  rewriteAsLocationOther(conv);
+
+  const result = formatMarkdown(conv, { includeAll: true });
+  expect(result).toMatch(/\*\*A \(Location\):\*\* Other — "src\/helpers\/"/);
+  expect(result).not.toMatch(/\*\*camelCase\*\* —/);
+  expect(result).not.toMatch(/\*\*snake_case\*\* —/);
+});
+
+test('AUQ rendered regardless of includeTools flag (it is conversation, not tool traffic)', () => {
+  const result = formatMarkdown(auqConversation());
+  expect(result).toContain('**Q (Casing):**');
+  expect(result).toContain('**A (Casing):**');
+});
+
+test('AUQ from real fixture renders both pairs in default mode', async () => {
+  const conv = await parseConversation(fixture('auq.jsonl'));
+  const result = formatMarkdown(conv);
+
+  expect(result).toContain('**Q (Casing):** Casing?');
+  expect(result).toContain('**A (Casing):** camelCase');
+  expect(result).toContain('**Q (Location):** Where should the file live?');
+  expect(result).toMatch(/\*\*A \(Location\):\*\* Other — "src\/helpers\/"/);
+});

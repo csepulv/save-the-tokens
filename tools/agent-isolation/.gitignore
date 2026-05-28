@@ -1,0 +1,7 @@
+# Live per-project config — host-specific paths, do not commit.
+# The *.example templates stay tracked.
+*.agent.yml
+services.compose.yml
+*.services.compose.yml
+settings.container.json
+local-additional-context.md

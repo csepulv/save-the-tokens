@@ -44,6 +44,7 @@ invocable from any project.
 | [`visual-qa`](skills/visual-qa/) | Browser-based directed and exploratory testing of a running site. |
 | [`skill-advisor`](skills/skill-advisor/) | Recommends relevant skills for a task — never auto-invokes. |
 | [`file-index`](skills/file-index/) | Generate and reuse a file index so agents navigate unfamiliar code fast. |
+| [`sekko`](skills/sekko/) | Drive the `sekko` CLI — record, extract, and read browser/terminal sessions to debug, build tests, or learn a UI or CLI. |
 
 ## Status
 

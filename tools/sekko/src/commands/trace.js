@@ -11,6 +11,8 @@ import { planTraceLaunch } from '../lib/trace-options.js';
 import { ensureProfilePath } from '../lib/profile-paths.js';
 import { startSystemScreencap, getBrowserWindowRegion } from '../lib/system-screencap.js';
 import { sanitizeHarFile } from '../lib/sanitize-har.js';
+import { startExtensionCapture } from '../lib/cdp-extension-capture.js';
+import { sanitizeExtensionEntry } from '../lib/sanitize-extension-network.js';
 
 export async function trace(url, options) {
   let plan;
@@ -31,6 +33,7 @@ export async function trace(url, options) {
   const harPath = resolve(outputDir, 'recording.har');
   const eventsPath = resolve(outputDir, 'user-events.json');
   const sysShotsDir = resolve(outputDir, 'system-screenshots');
+  const extensionNetworkPath = resolve(outputDir, 'extension-network.json');
 
   // Narration pre-flight
   let audioController = null;
@@ -81,9 +84,21 @@ export async function trace(url, options) {
   console.log(`Recording trace — browse ${url}, then close the browser to finish.`);
   await page.goto(url);
 
-  const { screencap, regionRefreshTimer } = options.systemScreenshots
+  const { screencap, regionRefreshTimer } = plan.useSystemScreenshots
     ? await setupSystemScreencap(page, sysShotsDir)
     : { screencap: null, regionRefreshTimer: null };
+
+  // Optional comprehensive extension recording — capture network from
+  // service workers and extension pages (popup/sidepanel/options) via CDP.
+  // Spec: docs/sekko/epics/trace-extensions/. Empirically validated by
+  // scripts/spike-cdp-sw-network.mjs (2026-04-29).
+  const extensionCapture = plan.traceExtensions
+    ? await startExtensionCapture({
+        context,
+        page,
+        sanitize: options.sanitize === false ? (e) => e : sanitizeExtensionEntry,
+      })
+    : null;
 
   // Track which pages belong to this recording session. New pages opened
   // during the session (popups, sidepanels) are added; user-opened tabs
@@ -137,6 +152,24 @@ export async function trace(url, options) {
       // throws (which happens occasionally in connect mode).
       const events = poller.getEvents();
       await writeFile(eventsPath, JSON.stringify(events, null, 2));
+
+      // Drain extension capture — sanitization happens inside, then we
+      // serialize. Run before tracing.stop so any pending body fetches
+      // get a chance against the still-live CDP session.
+      if (extensionCapture) {
+        try {
+          const result = await extensionCapture.stop();
+          if (result.count > 0) {
+            await writeFile(
+              extensionNetworkPath,
+              JSON.stringify(result.entries, null, 2)
+            );
+            console.log(`Extension network: ${result.count} entries from ${result.sessionsAttached} target(s) → ${extensionNetworkPath}`);
+          }
+        } catch (e) {
+          console.error(`Warning: extension network capture failed to drain: ${e.message}`);
+        }
+      }
 
       await context.tracing.stop({ path: tracePath });
 

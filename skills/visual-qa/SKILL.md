@@ -14,8 +14,8 @@ description: >
 
 Determine which browser tool is available. Check in this order:
 
-1. **Chrome DevTools MCP** — check if any MCP tools starting with `chrome-devtools` are available (e.g., `navigate_page`, `take_screenshot`). If yes, set tool mode to **devtools**.
-2. **agent-browser CLI** — run `agent-browser --version 2>/dev/null && echo "READY" || echo "NOT_FOUND"`. If READY, set tool mode to **agent-browser**.
+1. **agent-browser CLI** — run `agent-browser --version 2>/dev/null && echo "READY" || echo "NOT_FOUND"`. If READY, set tool mode to **agent-browser**.
+2**Chrome DevTools MCP** — check if any MCP tools starting with `chrome-devtools` are available (e.g., `navigate_page`, `take_screenshot`). If yes, set tool mode to **devtools**.
 3. **browse CLI** — run `browse url 2>/dev/null && echo "READY" || echo "NOT_FOUND"`. If READY, set tool mode to **browse**.
 4. **Neither** — tell the user: "No browser tool available. Install Chrome DevTools MCP, agent-browser, or the browse CLI."
 

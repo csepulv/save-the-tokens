@@ -73,6 +73,9 @@ full flag details.
 | `session-export all <output-dir>` | Bulk export to per-project folders |
 | `session-export get-id <slug>` | Resolve a `/rename`'d slug to its session UUID(s) |
 | `session-export merge` | Sync session JSONLs from one Claude folder to another |
+| `session-export copy` | Copy sessions between Claude folders (overwrites dest) |
+| `session-export move` | Move sessions between Claude folders (dry-run by default) |
+| `session-export remove` | Delete sessions by id/slug or `--project` pattern (dry-run by default) |
 | `session-export stats` | Aggregate per-session stats as JSON |
 
 All four commands accept `--source <alias\|path>` to restrict to one
@@ -287,7 +290,7 @@ another machine and want to land it back on your primary one.
 | `[id]` (positional) | Session slug or full UUID — limits to that one session |
 | `--source <alias\|path>` | Where sessions come from (required) |
 | `--dest <alias\|path>` | Where they go (default: `default`) |
-| `--project <name>` | Limit to one project — exact display-name match |
+| `--project <pattern>` | Limit to one project — exact display name, or anchored glob if it contains `*` |
 | `--all` | Merge every session in source |
 | `--force` | Overwrite even when dest mtime is newer |
 | `--skip-newer` | Skip files where dest mtime is newer; copy the rest |
@@ -322,6 +325,143 @@ session-export merge \
 This is a one-way merge — sessions in `--dest` that aren't in
 `--source` are left alone. The merge is at the file level only;
 divergent JSONL transcripts cannot be reconciled at the line level.
+
+### Copy and move sessions between Claude folders
+
+```bash
+session-export copy [id] --source <alias|path> [--dest <alias|path>] [--project <pattern>]
+session-export move [id] --source <alias|path> [--dest <alias|path>] [--project <pattern>] [--yes]
+```
+
+`copy` and `move` relocate session JSONL files between Claude folders
+with plain `cp` / `mv` semantics — pick a scope, name a destination,
+done. `copy` leaves the source intact; `move` deletes it afterward.
+
+| Arg | Purpose |
+|---|---|
+| `[id]` (positional) | Exact session UUID **or** exact custom-title slug — no substring match |
+| `--source <alias\|path>` | Where sessions come from (required) |
+| `--dest <alias\|path>` | Where they go (default: `default`) |
+| `--project <pattern>` | Project display name. Exact match unless the pattern contains `*` |
+| `--yes` | (`move` only) Execute the move. Without it, `move` is a dry-run |
+
+Exactly one of `[id]` or `--project` is required. Scope and pattern
+semantics are identical to [`remove`](#remove-sessions) — exact id/slug,
+anchored-glob `--project` against the decoded display name.
+
+**`copy` vs `merge`.** `merge` is a conflict-aware sync — it compares
+`mtime`, skips files already current in the dest, and halts on
+conflicts. `copy` is unconditional: it overwrites whatever is in the
+dest, no questions asked. Reach for `merge` when reconciling two
+folders that both have history; reach for `copy` when you just want
+these sessions over there. Both preserve the source mtime, so the
+copy keeps its place in `list` and `stats`.
+
+**`move` is dry-run by default.** Without `--yes`, `move` lists every
+session that would move — annotating any that would overwrite an
+existing dest file — and changes nothing. With `--yes` it copies all
+files first, then deletes the sources, then removes any source project
+directory left empty (same cleanup rule as `remove` — a `subagents/`
+dir with content blocks it). Copy-before-delete means a failure
+partway through leaves the source intact and the command re-runnable.
+
+```bash
+# Copy one session into the default Claude folder
+session-export copy nesso-memory --source ~/Downloads/doppio-claude
+
+# Copy a whole project between two folders
+session-export copy --project workspace/myapp \
+  --source ~/Downloads/old-claude --dest work
+
+# Preview a move (dry-run — nothing changes)
+session-export move 7e9b370d-e628-4c4a-8b86-ebe2ff2d9c6b \
+  --source ~/Downloads/doppio-claude
+
+# Execute the move after reviewing the dry-run
+session-export move 7e9b370d-e628-4c4a-8b86-ebe2ff2d9c6b \
+  --source ~/Downloads/doppio-claude --yes
+```
+
+### Remove sessions
+
+```bash
+session-export remove [id] [--project <pattern>] [--source <alias|path>] [--yes]
+```
+
+Delete session JSONL files. Cleans up the encoded project directory if it
+ends up empty. **Dry-run by default** — without `--yes`, the command lists
+every session that would be deleted (one per line: source, sessionId,
+project, full path) and a summary count. Files are untouched until you
+re-run with `--yes`.
+
+| Arg | Purpose |
+|---|---|
+| `[id]` (positional) | Exact session UUID **or** exact custom-title slug — no substring match |
+| `--project <pattern>` | Project display name. Exact match unless the pattern contains `*` |
+| `--source <alias\|path>` | Restrict to one source (default: walk every configured source) |
+| `--yes` | Execute the deletion. Without this, it's a dry-run |
+
+Exactly one of `[id]` or `--project` is required.
+
+**`<id>` semantics.** Same as `merge`: full UUID filename or exact custom
+title. Substrings are rejected. Slug ambiguity within one source halts
+non-zero. With the default walk-all-sources scope, an id matching in
+multiple sources also halts — re-run with `--source` to disambiguate.
+
+**`--project` semantics.** Without `*`, the value must match the decoded
+display name **exactly**. With `*`, the pattern is an anchored glob (matches
+the whole name from start to end) — `*` is the only metacharacter; every
+other character (including `?`, `.`, `(`, etc.) is treated literally.
+
+**Patterns match the *decoded* display name.** Claude Code stores projects
+under encoded dirnames where `-` separates path segments
+(`-Users-you-workspace-myapp`); decoding restores `/` boundaries
+(`workspace/myapp` after the home prefix is stripped). Patterns are matched
+against the decoded form. Run `session-export list --filter <substring>`
+first to see what your project names actually look like before constructing
+a pattern.
+
+```bash
+# Recon: scan project names with a substring filter (cheap, read-only)
+session-export list --filter monitor
+
+# Dry-run: show what would be deleted, change nothing
+session-export remove --project '*claude-monitor*'
+
+# Execute after reviewing the dry-run output
+session-export remove --project '*claude-monitor*' --yes
+
+# Exact-match (no wildcards)
+session-export remove --project 'workspace/scratch/claude-monitor' --yes
+
+# Path-anchored: match a whole subtree
+session-export remove --project '/private/tmp/*' --yes
+
+# Single session by UUID
+session-export remove 7dee69bc-8dca-4383-a7d0-21e8446828c8 --yes
+
+# Single session by slug (exact custom title)
+session-export remove nesso-memory --yes
+```
+
+**Glob caveats.**
+
+- Anchored: `claude-monitor-*` matches names *starting with* `claude-monitor-`.
+  To match anywhere, write `*claude-monitor*`. To match a path subtree,
+  prefix with the segment(s) you mean — e.g., `workspace/*` not just `*`.
+- `*` does cross `/` boundaries. `/private/*` matches
+  `/private/tmp/claude/monitor/verify`.
+- Other characters are literal. `claude.monitor` does not match
+  `claude/monitor` — the `.` is a literal dot, not a wildcard.
+
+**Cleanup.** After `--yes` deletes the JSONLs, the encoded project directory
+is removed when nothing significant remains. A `subagents/` subdirectory
+with content blocks cleanup (so agent traces survive); an empty
+`subagents/` does not.
+
+**Multiple sources.** Without `--source`, the command walks every source
+in your config — same default as `list`, `stats`, and `all`. With
+`--source`, the scope shrinks to that one.
 
 ### Stats
 
@@ -401,6 +541,15 @@ With `--include-tools`, tool calls appear as collapsible `<details>`
 blocks. With `--include-all`, tool results, thinking blocks, subagent
 conversations, and system messages all render as collapsible sections.
 
+`AskUserQuestion` exchanges are an exception — they always render in
+default mode, since the answer is the user's input, not tool traffic.
+Each question appears under the assistant turn as `**Q (<header>):**`,
+and the picked answer appears under the user turn as `**A (<header>):**`.
+With `--include-all`, the full options list renders under each question
+with the picked option bolded, and the user's answer line is prefixed
+with `✓`. Free-text answers (when the user picks "Other") render as
+`Other — "<text>"`.
+
 ### Plain text
 
 `=== USER ===` / `=== ASSISTANT ===` headers with the same YAML
@@ -415,6 +564,9 @@ human/assistant dialogue. Infrastructure noise is filtered:
 - Tool calls and results are excluded unless `--include-tools` / `--include-all`
 - System messages are excluded unless `--include-system` / `--include-all`
 - Subagent conversations are included with `--include-all`
+- `AskUserQuestion` Q&A is always included — questions on the assistant
+  side, answers on the user side. `--include-all` adds the full options
+  list and a `✓` mark on the picked answer.
 
 ## Troubleshooting
 

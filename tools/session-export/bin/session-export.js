@@ -9,6 +9,9 @@ import * as allCmd from '../lib/commands/all.js';
 import * as statsCmd from '../lib/commands/stats.js';
 import * as getIdCmd from '../lib/commands/get-id.js';
 import * as mergeCmd from '../lib/commands/merge.js';
+import * as copyCmd from '../lib/commands/copy.js';
+import * as moveCmd from '../lib/commands/move.js';
+import * as removeCmd from '../lib/commands/remove.js';
 
 // `--output` accepts an optional value (bare, path, or dir/). yargs doesn't
 // model this natively, so extract it before yargs parses the rest.
@@ -91,6 +94,37 @@ await yargs(afterOutput)
       .option('force', { type: 'boolean', default: false, describe: 'Overwrite even when dest mtime is newer' })
       .option('skip-newer', { type: 'boolean', default: false, describe: 'Skip files where dest mtime is newer; copy the rest' }),
     (args) => mergeCmd.run(args),
+  )
+  .command(
+    'copy [id]',
+    'Copy session JSONL files between Claude folders (overwrites dest unconditionally)',
+    (y) => y
+      .positional('id', { type: 'string', describe: 'Exact session UUID or exact custom-title slug (no substring match)' })
+      .option('source', { type: 'string', demandOption: true, describe: 'Source alias or path (where sessions come from)' })
+      .option('dest', { type: 'string', default: 'default', describe: 'Dest alias or path (default: "default")' })
+      .option('project', { type: 'string', describe: 'Exact project display name, or pattern with `*`' }),
+    (args) => copyCmd.run(args),
+  )
+  .command(
+    'move [id]',
+    'Move session JSONL files between Claude folders (dry-run by default — pass --yes to execute)',
+    (y) => y
+      .positional('id', { type: 'string', describe: 'Exact session UUID or exact custom-title slug (no substring match)' })
+      .option('source', { type: 'string', demandOption: true, describe: 'Source alias or path (where sessions come from)' })
+      .option('dest', { type: 'string', default: 'default', describe: 'Dest alias or path (default: "default")' })
+      .option('project', { type: 'string', describe: 'Exact project display name, or pattern with `*`' })
+      .option('yes', { type: 'boolean', default: false, describe: 'Execute the move (default: dry-run / list only)' }),
+    (args) => moveCmd.run(args),
+  )
+  .command(
+    'remove [id]',
+    'Delete session JSONL files; cleans up empty project dirs (dry-run by default — pass --yes to execute)',
+    (y) => y
+      .positional('id', { type: 'string', describe: 'Exact session UUID or exact custom-title slug (no substring match)' })
+      .option('project', { type: 'string', describe: 'Exact project display name, or pattern with `*` (e.g., `claude-monitor-*`)' })
+      .option('source', { type: 'string', describe: 'Restrict to one source (default: walk all)' })
+      .option('yes', { type: 'boolean', default: false, describe: 'Execute the deletion (default: dry-run / list only)' }),
+    (args) => removeCmd.run(args),
   )
   .command(
     'stats',

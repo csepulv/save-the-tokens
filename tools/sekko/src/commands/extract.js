@@ -41,7 +41,7 @@ export async function extract(tracePath, options) {
 
   const ctx = await prepareTraceDir(resolvedTrace);
   let { actions, selectors } = parseActionsFromTrace(resolvedTrace, ctx);
-  let detailEntries = await extractNetworkDetails(ctx, config);
+  let detailEntries = await extractNetworkDetails(ctx, config, resolvedTrace);
 
   const correlated = correlateActionAndNetworkCalls(actions, detailEntries);
   actions = correlated.actions;
@@ -161,14 +161,39 @@ function parseActionsFromTrace(resolvedTrace, ctx) {
   return { actions, selectors };
 }
 
-async function extractNetworkDetails(ctx, config) {
-  let network = await getNetworkTraffic(ctx);
+async function extractNetworkDetails(ctx, config, tracePath) {
+  let pageNetwork = await getNetworkTraffic(ctx);
+  // Tag page-driven entries — they come from trace.zip CDP capture
+  pageNetwork = pageNetwork.map((entry) => ({ ...entry, origin: 'page' }));
+
+  // Merge in extension-network.json from the recording dir, if present.
+  // Each entry already has its own `origin` field set during capture
+  // (service-worker / popup / sidepanel / options / extension).
+  const extensionNetwork = loadExtensionNetwork(tracePath);
+  let network = [...pageNetwork, ...extensionNetwork];
+  if (extensionNetwork.length > 0) {
+    console.log(`  Extension network: ${extensionNetwork.length} entries merged in`);
+  }
+
   const unfilteredCount = network.length;
   network = filterNetwork(network, config);
   if (network.length < unfilteredCount) {
     console.log(`  Filtered network: ${network.length} of ${unfilteredCount} requests`);
   }
   return buildNetworkDetail(network);
+}
+
+function loadExtensionNetwork(tracePath) {
+  const path = resolve(dirname(tracePath), 'extension-network.json');
+  if (!existsSync(path)) return [];
+  try {
+    const raw = readFileSync(path, 'utf-8');
+    const entries = JSON.parse(raw);
+    return Array.isArray(entries) ? entries : [];
+  } catch (e) {
+    console.error(`Warning: could not read ${path}: ${e.message}`);
+    return [];
+  }
 }
 
 // Pick the screenshot source for this extract: system frames if the
@@ -241,6 +266,8 @@ function loadNarration(tracePath) {
 }
 
 async function writeArtifacts(outputDir, { actions, detailEntries, selectors, savedShots, screenshotSource, narration }) {
+  const networkOriginCounts = countByOrigin(detailEntries);
+
   const artifacts = [
     { file: 'actions.md', content: formatActions(actions) },
     { file: 'network.md', content: formatNetwork(detailEntries) },
@@ -253,6 +280,7 @@ async function writeArtifacts(outputDir, { actions, detailEntries, selectors, sa
         actionCount: actions.length,
         selectorCount: selectors.length,
         networkCount: detailEntries.length,
+        networkOriginCounts,
         screenshotCount: savedShots.length,
         screenshotSource,
         narrationWordCount: narration?.words?.length || 0,
@@ -264,6 +292,15 @@ async function writeArtifacts(outputDir, { actions, detailEntries, selectors, sa
   for (const { file, content } of artifacts) {
     await writeFile(resolve(outputDir, file), content);
   }
+}
+
+function countByOrigin(entries) {
+  const counts = {};
+  for (const entry of entries) {
+    const origin = entry.origin || 'page';
+    counts[origin] = (counts[origin] || 0) + 1;
+  }
+  return counts;
 }
 
 function printSummary(outputDir, { actions, detailEntries, selectors, savedShots, allCount, screenshotSource, narration }) {

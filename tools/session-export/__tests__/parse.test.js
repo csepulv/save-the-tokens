@@ -301,3 +301,155 @@ test('extracts timestamps for startedAt and endedAt', async () => {
   expect(result.metadata.endedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   expect(new Date(result.metadata.endedAt) >= new Date(result.metadata.startedAt)).toBe(true);
 });
+
+// AskUserQuestion: parse promotes Q&A to structured fields, not tool traffic.
+
+test('AskUserQuestion tool_use produces structured questions on assistant', async () => {
+  const result = await parseConversation(fixture('auq.jsonl'));
+
+  const asstMsgs = result.messages.filter((m) => m.role === 'assistant');
+  const askingMsgs = asstMsgs.filter((m) => m.questions?.length > 0);
+  expect(askingMsgs.length).toBe(2);
+
+  const q1 = askingMsgs[0].questions[0];
+  expect(q1.header).toBe('Casing');
+  expect(q1.question).toBe('Casing?');
+  expect(q1.multiSelect).toBe(false);
+  expect(q1.options.map((o) => o.label)).toEqual(['camelCase', 'snake_case']);
+  expect(q1.options[0].description).toBe('Single word, internal capitals.');
+});
+
+test('AskUserQuestion tool_use does not appear in toolCalls', async () => {
+  const result = await parseConversation(fixture('auq.jsonl'));
+
+  for (const msg of result.messages) {
+    for (const call of msg.toolCalls ?? []) {
+      expect(call).not.toMatch(/AskUserQuestion/);
+    }
+  }
+});
+
+test('AskUserQuestion tool_result produces structured answers on user', async () => {
+  const result = await parseConversation(fixture('auq.jsonl'));
+
+  const userMsgs = result.messages.filter((m) => m.role === 'user');
+  const answeringMsgs = userMsgs.filter((m) => m.answers?.length > 0);
+  expect(answeringMsgs.length).toBe(2);
+
+  const a1 = answeringMsgs[0].answers[0];
+  expect(a1.header).toBe('Casing');
+  expect(a1.question).toBe('Casing?');
+  expect(a1.selected).toBe('camelCase');
+  expect(a1.notes).toBeUndefined();
+  expect(a1.options.map((o) => o.label)).toEqual(['camelCase', 'snake_case']);
+});
+
+test('AskUserQuestion tool_result does not appear in toolResults', async () => {
+  const result = await parseConversation(fixture('auq.jsonl'));
+
+  for (const msg of result.messages) {
+    for (const result of msg.toolResults ?? []) {
+      expect(result.toolName).not.toBe('AskUserQuestion');
+      expect(result.content).not.toMatch(/User has answered your questions/);
+    }
+  }
+});
+
+test('AskUserQuestion free-text answer captures notes from annotations', async () => {
+  const result = await parseConversation(fixture('auq.jsonl'));
+
+  const userMsgs = result.messages.filter((m) => m.role === 'user');
+  const answeringMsgs = userMsgs.filter((m) => m.answers?.length > 0);
+  // Second AUQ pair uses Other / notes
+  const a2 = answeringMsgs[1].answers[0];
+
+  expect(a2.header).toBe('Location');
+  expect(a2.selected).toBe('src/helpers/');
+  expect(a2.notes).toBe('src/helpers/');
+});
+
+test('AskUserQuestion answer message survives mergeConsecutiveAssistant', async () => {
+  const result = await parseConversation(fixture('auq.jsonl'));
+
+  // After merge, the user-with-answers messages must NOT be absorbed into
+  // the preceding assistant — they're real conversation now.
+  const merged = mergeConsecutiveAssistant(result.messages);
+  const userAnswerMsgs = merged.filter((m) => m.role === 'user' && m.answers?.length > 0);
+  expect(userAnswerMsgs.length).toBe(2);
+});
+
+test('mergeConsecutiveAssistant concats questions when merging assistant turns', () => {
+  const messages = [
+    {
+      role: 'assistant',
+      text: ['Let me ask.'],
+      toolCalls: [],
+      toolResults: [],
+      thinking: [],
+    },
+    {
+      role: 'assistant',
+      text: [],
+      toolCalls: [],
+      toolResults: [],
+      thinking: [],
+      questions: [{ header: 'H', question: 'Q?', options: [], multiSelect: false }],
+    },
+  ];
+
+  const merged = mergeConsecutiveAssistant(messages);
+
+  expect(merged.length).toBe(1);
+  expect(merged[0].text).toEqual(['Let me ask.']);
+  expect(merged[0].questions?.length).toBe(1);
+  expect(merged[0].questions[0].header).toBe('H');
+});
+
+test('AskUserQuestion tool_use without matching tool_result still produces questions', async () => {
+  // Simulates an aborted/incomplete session: assistant asks, no answer record.
+  const fakeJsonl = [
+    JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: 'hi' },
+      uuid: 'u1',
+      timestamp: '2026-01-01T00:00:00Z',
+      sessionId: 's1',
+    }),
+    JSON.stringify({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        id: 'm1',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_orphan',
+            name: 'AskUserQuestion',
+            input: {
+              questions: [{
+                question: 'Q?',
+                header: 'H',
+                multiSelect: false,
+                options: [{ label: 'A', description: 'a' }],
+              }],
+            },
+          },
+        ],
+      },
+      uuid: 'a1',
+      timestamp: '2026-01-01T00:00:01Z',
+    }),
+  ].join('\n');
+
+  const result = await parseConversation('/fake.jsonl', {
+    readFile: async () => fakeJsonl,
+    hostname: () => 'h',
+  });
+
+  const asstMsgs = result.messages.filter((m) => m.role === 'assistant');
+  expect(asstMsgs[0].questions?.length).toBe(1);
+  expect(asstMsgs[0].questions[0].header).toBe('H');
+  // No answer record means no answers anywhere
+  const userMsgs = result.messages.filter((m) => m.role === 'user');
+  expect(userMsgs.every((m) => !m.answers)).toBe(true);
+});

@@ -14,6 +14,16 @@ const REDACTION_PATTERNS = [
     pattern: /(Bearer\s+)[^\s"']+/gi,
     replacement: '$1[REDACTED]',
   },
+  // JWTs — three base64url-encoded segments separated by dots, both
+  // header and payload start with `eyJ` (base64 of `{"`). Catches
+  // standalone JWTs in JSON values, URL params, HTML script blocks,
+  // and any free-form text. Two-segment strings (incomplete JWTs)
+  // and short eyJ-prefixed strings without the full structure don't
+  // match.
+  {
+    pattern: /\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+    replacement: '[REDACTED JWT]',
+  },
   // GitHub tokens
   {
     pattern: /\b(ghp_|gho_|ghs_|github_pat_)[A-Za-z0-9_]+/g,

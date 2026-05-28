@@ -48,6 +48,23 @@ export function resolveConnectUrl(value) {
 }
 
 export function planTraceLaunch(options = {}) {
+  const traceExtensions = !!options.traceExtensions;
+
+  // --trace-extensions needs an extension source: either --load-extension
+  // (sekko launches a browser and loads the extension) or --connect (sekko
+  // attaches to a browser that already has extensions installed).
+  if (traceExtensions && !options.loadExtension && !options.connect) {
+    throw new Error(
+      '--trace-extensions requires either --load-extension <path> ' +
+      '(sekko launches a browser with the extension) or --connect ' +
+      '(sekko attaches to a running browser that has extensions installed).'
+    );
+  }
+
+  // Preset behavior: --trace-extensions implies --system-screenshots
+  // (popups and toolbar UI need full-window capture).
+  const useSystemScreenshots = !!options.systemScreenshots || traceExtensions;
+
   const connectUrl = resolveConnectUrl(options.connect);
 
   if (connectUrl) {
@@ -94,6 +111,8 @@ export function planTraceLaunch(options = {}) {
       warnings,
       useAuth: false,
       useSaveAuth: false,
+      useSystemScreenshots,
+      traceExtensions,
     };
   }
 
@@ -130,5 +149,7 @@ export function planTraceLaunch(options = {}) {
     warnings,
     useAuth: !persistencePath && !!options.auth,
     useSaveAuth: !persistencePath && !!options.saveAuth,
+    useSystemScreenshots,
+    traceExtensions,
   };
 }

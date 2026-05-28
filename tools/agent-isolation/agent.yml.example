@@ -1,0 +1,65 @@
+# agent-isolation container config — one file per container.
+#
+#   ./launch.sh --config <name>.agent.yml
+#   ./sync-config.sh --config <name>.agent.yml
+#
+# Copy to <name>.agent.yml (gitignored), edit, and launch.
+
+# ── identity ────────────────────────────────────────────────────────
+# Both optional. If omitted, derived from the config filename:
+#   tsugi.agent.yml → container_name agent-tsugi → hostname agent-tsugi
+# container_name: agent-tsugi
+# hostname:       tsugi-dev
+
+# ── mounts ──────────────────────────────────────────────────────────
+# List of mount specs. Modes:
+#   claude → /home/agent/.claude  (≤1; persistent claude config dir)
+#   rw     → /workspace/<target>  (first rw becomes the container CWD)
+#   ro     → /reference/<target>  (read-only)
+#   mcp    → /mcp/<target>        (read-only; host paths rewritten in
+#                                  .claude.json at sync time)
+# `target` is optional; defaults to the basename of the host path.
+mounts:
+  - { host: ~/agent-workspace/agent-claude, mode: claude }
+  - { host: ~/workspace/my-project,         mode: rw }
+  # - { host: ~/workspace/stt-private,        mode: ro }
+  # - { host: ~/some-mcp-source,              mode: mcp, target: my-mcp }
+
+# ── ports ───────────────────────────────────────────────────────────
+# List. Each entry is either:
+#   - a number      → host == container  (e.g.  5173 → 5173:5173)
+#   - "host:cntr"   → explicit mapping   (e.g. "8080:80")
+# Port 3118 (Slack OAuth callback) is always published; don't list it.
+ports: []
+  # - 5173
+  # - 4000
+  # - "27017:27017"
+
+# ── services or network (mutually exclusive) ────────────────────────
+# `services` — Mode A: agent-isolation owns the services.
+# services: my-project.services.compose.yml
+#
+# `network` — Mode B: services already running; join an existing network.
+# network: junkdrawer_default
+
+# ── settings template override (optional) ───────────────────────────
+# Filename (in the tool dir) of a custom container settings.json template.
+# Defaults to settings.container.json (live) or settings.container.json.example.
+# settings_template: my-stance.settings.container.json
+
+# ── env ─────────────────────────────────────────────────────────────
+# Passed into the agent container as `-e KEY=value`. Empty `{}` is fine.
+env: {}
+  # CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+  # PROJECT_API_HOST: http://elasticsearch:9200
+
+# ── on_start (optional) ─────────────────────────────────────────────
+# Generic backgrounded command run inside the container at every start
+# (fresh create AND resume). Output goes to a log file in the container.
+# See local-additional-context.md.example for the claude-monitor
+# local-daemon recipe as a worked example.
+# on_start:
+#   command: node /reference/stt-private/tools/claude-monitor/packages/local-daemon/src/index.js
+#   env:
+#     CENTRAL_URL: http://host.docker.internal:4830
+#   log: /tmp/local-daemon.log    # default: /tmp/agent-on-start.log

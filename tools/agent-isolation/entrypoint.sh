@@ -6,6 +6,7 @@
 #   - Restores from backup if .claude.json is missing
 #   - Sets git identity
 #   - Verifies config mount exists
+#   - Runs on_start if launch.sh staged one (see ~/.agent-isolation/)
 #
 # Runs as the 'agent' user inside the container.
 
@@ -14,6 +15,8 @@ set -euo pipefail
 CLAUDE_DIR="${HOME}/.claude"
 CLAUDE_JSON="${HOME}/.claude.json"
 CLAUDE_JSON_INNER="${CLAUDE_DIR}/.claude.json"
+STATE_DIR="${HOME}/.agent-isolation"
+ON_START_FILE="${STATE_DIR}/on-start.json"
 
 # ── Verify config mount ────────────────────────────────────────────
 if [[ ! -f "${CLAUDE_DIR}/settings.json" ]]; then
@@ -44,23 +47,36 @@ if [[ -f "${CLAUDE_JSON}" && ! -L "${CLAUDE_JSON}" ]]; then
 fi
 ln -sf "${CLAUDE_JSON_INNER}" "${CLAUDE_JSON}"
 
-# ── Rewrite MCP server paths ───────────────────────────────────────
-# launch.sh writes a mapping file when mcp mounts are declared.
-# Each line: host_path|container_path
-# We rewrite these in .claude.json so MCP server commands point to
-# the container mount paths instead of the host's absolute paths.
-MCP_MAP="${CLAUDE_DIR}/.mcp-path-map"
-if [[ -f "${MCP_MAP}" && -f "${CLAUDE_JSON_INNER}" ]]; then
-  while IFS='|' read -r host_path container_path; do
-    [[ -z "${host_path}" ]] && continue
-    sed -i "s|${host_path}|${container_path}|g" "${CLAUDE_JSON_INNER}"
-  done < "${MCP_MAP}"
-  echo "Rewrote MCP paths in .claude.json"
-fi
+# MCP path rewriting used to happen here via a launch-written
+# `.mcp-path-map` and a sed loop. Retired in M2: sync-config.sh Phase C
+# rewrites those paths once, at sync time, in the host-side
+# agent-claude/.claude.json (and the other config files). No runtime
+# rewrite needed.
 
 # ── Git identity ───────────────────────────────────────────────────
 git config --global user.name "${GIT_AUTHOR_NAME:-claude-agent}"
 git config --global user.email "${GIT_AUTHOR_EMAIL:-agent@localhost}"
+
+# ── on_start (optional) ────────────────────────────────────────────
+# launch.sh writes on-start.json from the agent config's on_start block
+# into the host-side state dir, which is bind-mounted RO at
+# ${STATE_DIR} (i.e., ~/.agent-isolation/). Refreshes on every launch
+# (fresh + resume) so YAML edits take effect without a recreate.
+if [[ -f "${ON_START_FILE}" ]]; then
+  on_start_cmd=$(jq -r '.command' "${ON_START_FILE}")
+  on_start_log=$(jq -r '.log // "/tmp/agent-on-start.log"' "${ON_START_FILE}")
+  env_pairs=()
+  while IFS=$'\t' read -r k v; do
+    [[ -n "${k}" ]] && env_pairs+=("${k}=${v}")
+  done < <(jq -r '.env // {} | to_entries[] | "\(.key)\t\(.value)"' "${ON_START_FILE}")
+  if [[ ${#env_pairs[@]} -gt 0 ]]; then
+    env "${env_pairs[@]}" nohup bash -c "${on_start_cmd}" > "${on_start_log}" 2>&1 &
+  else
+    nohup bash -c "${on_start_cmd}" > "${on_start_log}" 2>&1 &
+  fi
+  disown
+  echo "on_start: ${on_start_cmd} (log: ${on_start_log})"
+fi
 
 # ── Hand off to CMD ────────────────────────────────────────────────
 exec "$@"

@@ -34,13 +34,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zsh \
     && rm -rf /var/lib/apt/lists/*
 
-# Playwright/Puppeteer: use system Chromium
-ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+# Browser tooling: system Chromium is installed via apt above (/usr/bin/chromium).
+# - CHROME_PATH is followed by many tools (agent-browser, headless-chromium
+#   wrappers, etc.).
+# - PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD skips Playwright's automatic browser
+#   fetch during `npm install` — saves time on project installs. Playwright
+#   does NOT auto-read CHROME_PATH; projects that use Playwright must either
+#   run `npx playwright install` to fetch Playwright's own browsers, or pass
+#   `executablePath: "/usr/bin/chromium"` explicitly to `chromium.launch()`.
 ENV CHROME_PATH=/usr/bin/chromium
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-# ── Claude Code + powerline ──────────────────────────────────────────
-RUN npm install -g @anthropic-ai/claude-code @owloops/claude-powerline
+# ── Claude Code + powerline + project tooling ────────────────────────
+# pnpm: project package manager for most workspaces.
+# agent-browser: headless-browser CLI for agent sessions (vercel-labs).
+RUN npm install -g \
+    @anthropic-ai/claude-code \
+    @owloops/claude-powerline \
+    pnpm \
+    agent-browser
 
 # ── Non-root user ────────────────────────────────────────────────────
 # UID/GID passed as build args to match host user for bind-mount ownership.

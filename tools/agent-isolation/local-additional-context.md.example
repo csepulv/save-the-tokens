@@ -1,0 +1,140 @@
+# Local additional context (agent-isolation container)
+
+You are running inside an `agent-isolation` Docker container — an isolated
+Claude Code environment. The host machine is not directly reachable from
+inside this container; everything you do happens here unless explicitly
+routed out.
+
+This file is the *container's* `local-additional-context.md`. The host has
+its own copy at the same path with different content (the user's host
+stance). They never see each other — same path, location-specific content.
+
+## Where things live
+
+| Container path        | Mount mode | What it is                                            |
+|-----------------------|------------|-------------------------------------------------------|
+| `/workspace/<name>`   | `rw`       | Project source the user is working on. Edit here.    |
+| `/reference/<name>`   | `ro`       | Read-only references. Don't write.                    |
+| `/mcp/<name>`         | `ro`       | Local MCP-server sources. Read-only.                  |
+| `/home/agent/.claude` | `claude`   | Your synced claude config (skills, plugins, settings).|
+
+`~/.claude.json` is symlinked into `/home/agent/.claude/.claude.json` by
+the entrypoint, so user-profile state persists across container restarts.
+
+## Reaching service containers
+
+When `launch.sh` brings up service containers (MongoDB,
+Elasticsearch, etc.), they live on a user-defined docker network and are
+reachable **by their compose service name, not by `localhost`**:
+
+- `http://elasticsearch:9200`
+- `mongodb://mongodb:27017`
+- `http://<service-name>:<port>` generally
+
+`localhost` inside this container is the container itself.
+
+## Port forwarding
+
+Container ports are **fixed at `docker run` time**. If a project needs a
+port the container wasn't started with, the user has to
+`docker rm <agent-name>` and relaunch with `--port HOST:CTNR`. There is
+no way to add a port to a running container.
+
+The Slack OAuth callback port (3118) is always published.
+
+## Networking out
+
+- Outbound internet works (npm/pnpm install, git fetch, curl, etc.).
+- The host machine is reachable as `host.docker.internal` (Docker
+  Desktop) — use this when you need to talk to a service running on
+  the host, e.g. claude-monitor's central daemon.
+- Containers on the same user-defined network reach each other by name
+  (see above).
+
+## Baked-in tools
+
+The agent image (`claude-agent:latest`) ships with:
+
+- Node.js 20, `npm`, `pnpm`
+- Claude Code CLI, `claude-powerline` (statusline)
+- `git`, `curl`, `jq`, `vim-tiny`, `rsync`, `zsh`, `procps`
+- System Chromium at `/usr/bin/chromium` (`CHROME_PATH` env var points
+  here; `agent-browser` and other `CHROME_PATH`-aware tools use it
+  automatically)
+- `agent-browser` (preferred CLI for headless-browser work in this
+  environment, in place of chrome-devtools MCP)
+
+**Playwright note:** `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` is set, so
+`pnpm install`/`npm install` won't fetch Playwright's browsers. Two ways
+to get a working browser:
+- Run `npx playwright install chromium` after install (Playwright's own
+  pinned browser, ~200MB).
+- OR pass `executablePath: "/usr/bin/chromium"` to `chromium.launch()`
+  to use the system Chromium directly (Playwright does NOT auto-read
+  `CHROME_PATH`).
+
+If you need a tool not listed, install with `npm install -g`,
+`pnpm add -g`, or `apt-get install` (root-equivalent inside the container
+isn't available; user-local installs work).
+
+## Multi-shell workflow
+
+A second `launch.sh --config <same>.agent.yml` invocation while the
+container is running attaches via `docker exec`. The useful pattern:
+
+- **Terminal 1:** launch container; in the container shell, start
+  long-lived servers detached:
+
+  ```
+  nohup pnpm dev > /tmp/web.log 2>&1 & disown
+  ```
+
+- **Terminal 2:** second `launch.sh` → enters the same container;
+  run `claude --dangerously-skip-permissions` here.
+
+- `claude /exit` in terminal 2 doesn't kill the servers in terminal 1;
+  they keep running.
+
+**When you start a long-running process from inside the agent (claude)
+session, detach it.** `nohup … & disown`, redirect output to a file in
+`/tmp/`, not the terminal. Output bleeding into the TUI makes the
+session unusable.
+
+## claude-monitor (if active, as a worked `on_start` example)
+
+If the user is monitoring this session via claude-monitor:
+
+- The `claude-monitor` plugin is enabled in `~/.claude/settings.json`.
+- Its hook (`forward-event.sh`) POSTs events to `MONITOR_URL` (default
+  `http://127.0.0.1:4820`).
+- The local-daemon (which listens on `4820` and forwards to the host's
+  central daemon at `host.docker.internal:4830`) runs **automatically
+  if you set `on_start` in the agent config**:
+
+  ```yaml
+  on_start:
+    command: node /reference/stt-private/tools/claude-monitor/packages/local-daemon/src/index.js
+    env:
+      CENTRAL_URL: http://host.docker.internal:4830
+    log: /tmp/local-daemon.log
+  ```
+
+  agent-isolation runs the command backgrounded at every container
+  start (fresh create AND resume). Tail the log at the path above to
+  confirm. `on_start` is generic — claude-monitor is one user of the
+  affordance; you can run any command this way.
+
+- If you prefer to start it manually, the equivalent recipe is:
+
+  ```
+  CENTRAL_URL=http://host.docker.internal:4830 \
+    nohup node /reference/stt-private/tools/claude-monitor/packages/local-daemon/src/index.js \
+    > /tmp/local-daemon.log 2>&1 & disown
+  ```
+
+## Don't assume
+
+- `localhost` does not reach the host.
+- Tools not listed above may not be present — check first.
+- Port mappings can't be configured at runtime; they're docker-run-time.
+- `/reference/<name>` is read-only — don't write there.

@@ -2,6 +2,7 @@ import path from 'path';
 
 import {
   computeSkillHash,
+  grantSkillPermissions,
   injectFrontmatter,
   parseFrontmatter,
   serializeFrontmatter,
@@ -406,6 +407,86 @@ disable-model-invocation: true
       expect(savedToSources['/team']).toBeDefined();
       expect(savedToSources['/team'].skills[0].sync_hash).toBe('hash-b');
       expect(savedToSources['/team'].skills[0].last_sync).toBeUndefined();
+    });
+
+    test('should grant skill permissions after syncing', async () => {
+      let grantArgs = null;
+
+      const config = {
+        'source-directories': ['/personal'],
+        'config-directory': '/merged'
+      };
+
+      const mockDeps = {
+        syncToTarget: async () => {},
+        getSkillsTargets: () => ({ 'claude-code': '/home/.claude/skills' }),
+        loadMergedSkillsDirectory: async () => ({ skills: [] }),
+        loadSkillsDirectoryFromSource: async () => ({ skills: [] }),
+        saveSkillsDirectoryToSource: async () => {},
+        getSkillsDirectory: () => '/merged/skills',
+        listSubdirectoryNames: async () => ['skill-a'],
+        grantSkillPermissions: async (_cfg, targetNames, skillNames) => {
+          grantArgs = { targetNames, skillNames };
+        }
+      };
+
+      await syncAll(config, { targets: ['claude-code'] }, mockDeps);
+
+      expect(grantArgs.targetNames).toEqual(['claude-code']);
+      expect(grantArgs.skillNames).toEqual(['skill-a']);
+    });
+  });
+
+  describe('grantSkillPermissions', () => {
+    test('should grant for claude-code targets that opted in', async () => {
+      const granted = [];
+
+      const deps = {
+        getTargets: () => ({
+          'claude-code': { grantSkillPermissions: true },
+          codex: {}
+        }),
+        syncSkillPermissions: async (_cfg, name, skillNames) => {
+          granted.push(name);
+          return { added: skillNames, removed: [] };
+        }
+      };
+
+      await grantSkillPermissions({}, ['claude-code', 'codex'], ['a'], {}, deps);
+
+      expect(granted).toEqual(['claude-code']);
+    });
+
+    test('should skip claude-code targets without the flag', async () => {
+      let called = false;
+
+      const deps = {
+        getTargets: () => ({ 'claude-code': { grantSkillPermissions: false } }),
+        syncSkillPermissions: async () => {
+          called = true;
+          return null;
+        }
+      };
+
+      await grantSkillPermissions({}, ['claude-code'], ['a'], {}, deps);
+
+      expect(called).toBe(false);
+    });
+
+    test('should skip non-claude-code targets even if flagged', async () => {
+      let called = false;
+
+      const deps = {
+        getTargets: () => ({ codex: { grantSkillPermissions: true } }),
+        syncSkillPermissions: async () => {
+          called = true;
+          return null;
+        }
+      };
+
+      await grantSkillPermissions({}, ['codex'], ['a'], {}, deps);
+
+      expect(called).toBe(false);
     });
   });
 

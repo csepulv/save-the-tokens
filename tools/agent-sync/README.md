@@ -297,6 +297,7 @@ Each entry supports these fields:
 | `name` | `"default"` | Instance identifier (used in state, CLI output, `--target` filtering) |
 | `config-dir` | `~/.claude` | Claude config directory |
 | `mcp` | `false` | Whether to sync MCP servers to this instance |
+| `grant-skill-permissions` | `false` | Pre-approve synced skills in this instance's `settings.json` (see [Skill Permissions](#skill-permissions)) |
 | `skills` | `<config-dir>/skills` | Override skills path |
 | `rules` | `<config-dir>/rules` | Override rules path |
 
@@ -308,6 +309,36 @@ For MCP sync, non-default instances use `CLAUDE_CONFIG_DIR=<config-dir>` when ca
 - `CLAUDE_CONFIG_DIR` is not officially documented by Anthropic. Behavior may change. See GitHub issues [#25762](https://github.com/anthropics/claude-code/issues/25762) and [#28808](https://github.com/anthropics/claude-code/issues/28808).
 - The VS Code extension's `/ide` command does not work with custom config directories (it hardcodes `~/.claude/ide/`).
 - Claude Code still creates local `.claude/` directories in workspaces for `settings.local.json`, regardless of `CLAUDE_CONFIG_DIR`.
+
+### Skill Permissions
+
+Claude Code prompts for permission the first time you invoke a skill. With
+`grant-skill-permissions: true` on a claude-code target, `agent-sync sync`
+pre-approves the synced skills by writing entries into that instance's
+`settings.json`:
+
+```yaml
+version: 2
+targets:
+  claude-code:
+    - mcp: true
+      grant-skill-permissions: true
+```
+
+For each synced skill it adds a `Skill(<name>)` entry to
+`permissions.allow`. It also cascades the skill's `allowed-tools`
+frontmatter — allowing `Skill(name)` does **not** grant the Bash commands
+the skill runs, so a skill declaring `allowed-tools: Bash(foo:*)` also gets
+a matching `Bash(foo:*)` entry.
+
+- Entries are **merged** into the existing `permissions.allow` — your other
+  settings and hand-added permissions are preserved.
+- `agent-sync` tracks what it placed (in `permissions-state.json`). Running
+  `sync --clean` prunes entries for skills that no longer exist; permissions
+  you added by hand are never removed.
+- Works in v1 configs too — set `grant-skill-permissions: true` on the
+  `claude-code` target object. Other targets (Codex, Gemini, ...) have no
+  equivalent and are unaffected.
 
 ### Config Version Migration
 

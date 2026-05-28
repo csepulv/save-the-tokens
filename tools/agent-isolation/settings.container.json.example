@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [],
+    "deny": ["Bash(rm -rf:*)"]
+  },
+  "skipAutoPermissionPrompt": true
+}

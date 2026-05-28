@@ -1,0 +1,76 @@
+# services.compose.yml — service containers for an isolated agent.
+#
+# Copy this file, keep the services your project needs, delete the rest:
+#   cp services.compose.yml.example my-project.services.compose.yml
+#
+# Then reference it from your agent config (my-project.agent.yml):
+#   services: my-project.services.compose.yml
+#
+# And launch with:
+#   ./launch.sh --config my-project.agent.yml
+#
+# launch.sh creates the `agent-net` network, brings these services up,
+# and joins the agent container to the same network.
+#
+# IMPORTANT: the agent reaches each service by its SERVICE NAME on
+# agent-net — NOT localhost. For the services below:
+#   Elasticsearch  ->  http://elasticsearch:9200
+#   MongoDB        ->  mongodb://mongodb:27017
+# Configure your project's service URLs accordingly (an env var the
+# project reads, not a hardcoded `localhost`).
+
+services:
+  elasticsearch:
+    image: elasticsearch:9.2.1
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks:
+      - agent-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    # Uncomment to also reach Elasticsearch from the host
+    # (e.g. Kibana, a host-side curl). Not needed for agent access.
+    # ports:
+    #   - "9200:9200"
+
+  mongodb:
+    image: mongo:8
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - agent-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # Uncomment to also reach MongoDB from the host
+    # (e.g. Compass, a host-side mongosh). Not needed for agent access.
+    # ports:
+    #   - "27017:27017"
+
+volumes:
+  es-data:
+  mongo-data:
+
+# The network the agent joins. launch.sh reads the name from this file
+# and creates the network if it does not already exist. Declared external
+# so docker compose attaches services without managing the network's
+# lifecycle (down/up shouldn't remove it).
+#
+# Rename per project if you want to run multiple agent stacks concurrently
+# (e.g. 'jd-net' for one project, 'other-net' for another) — services and
+# agents on different networks won't see each other's services and won't
+# clash on service-name DNS.
+networks:
+  agent-net:
+    external: true
