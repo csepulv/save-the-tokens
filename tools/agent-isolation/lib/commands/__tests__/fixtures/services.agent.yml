@@ -1,0 +1,10 @@
+container_name: agent-svc
+
+mounts:
+  - { host: ~/agent-claude, mode: claude }
+  - { host: ~/proj, mode: rw }
+
+ports:
+  - 5173
+
+services: my.services.compose.yml

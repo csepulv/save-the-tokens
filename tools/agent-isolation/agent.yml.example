@@ -19,6 +19,10 @@
 #   mcp    → /mcp/<target>        (read-only; host paths rewritten in
 #                                  .claude.json at sync time)
 # `target` is optional; defaults to the basename of the host path.
+# `host` accepts: /absolute, ~/home-relative, or a path relative to THIS
+# config file's directory (./same-folder, ../sibling) — so `--config` works
+# from any cwd. (Node CLI; the shell scripts resolve relative paths against
+# the current working directory.)
 mounts:
   - { host: ~/agent-workspace/agent-claude, mode: claude }
   - { host: ~/workspace/my-project,         mode: rw }
@@ -43,9 +47,11 @@ ports: []
 # network: junkdrawer_default
 
 # ── settings template override (optional) ───────────────────────────
-# Filename (in the tool dir) of a custom container settings.json template.
-# Defaults to settings.container.json (live) or settings.container.json.example.
-# settings_template: my-stance.settings.container.json
+# A custom container settings.json template. Resolves like the paths above:
+# /absolute, ~/home, or relative to THIS config's directory (./sibling).
+# A bare filename also falls back to the tool dir. Omit to use the default
+# (settings.container.json live, else settings.container.json.example).
+# settings_template: ./my-stance.settings.container.json
 
 # ── env ─────────────────────────────────────────────────────────────
 # Passed into the agent container as `-e KEY=value`. Empty `{}` is fine.

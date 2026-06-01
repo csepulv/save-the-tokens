@@ -1,0 +1,4 @@
+mode: daemon
+container_name: agent-hermes
+hermes_workspace: ~/ws
+ssh: { password: changeme }

@@ -1,0 +1,13 @@
+container_name: agent-demo
+hostname: demo-host
+
+mounts:
+  - { host: ~/agent-claude, mode: claude }
+  - { host: ~/proj, mode: rw }
+  - { host: ~/ref, mode: ro }
+
+ports:
+  - 5173
+
+env:
+  A: "1"

@@ -1,0 +1,4 @@
+container_name: agent-norw
+
+mounts:
+  - { host: ~/agent-claude, mode: claude }

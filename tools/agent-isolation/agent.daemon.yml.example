@@ -1,0 +1,54 @@
+# agent-isolation daemon-mode config — emits a docker-compose.yml for an
+# always-on, hermes-style container (gateway + dashboard + ssh) instead of
+# running an interactive `docker run`. Workflow:
+#
+#   agent-isolation launch --config <this-file>   # writes <workspace>/docker-compose.yml
+#   docker compose -f <workspace>/docker-compose.yml up -d
+#
+# Holds secrets (API keys, SSH password) — keep it OUT of git.
+# NOTE: emit-only today; the daemon image build + stand-up land in M3b.
+
+mode: daemon
+
+# ── identity ────────────────────────────────────────────────────────
+container_name: agent-hermes
+hermes_workspace: ~/hermes/personal   # root for this container's state
+                                      #   (<ws>/hermes + <ws>/claude-code + docker-compose.yml)
+launch_on_boot: true                  # true → restart: unless-stopped; false → "no"
+
+# ── ports (all optional; omitted → next free port) ──────────────────
+ports:
+  gateway: 8642        # Hermes gateway API   (bound to 127.0.0.1)
+  dashboard: 9119      # Hermes web dashboard (bound to 127.0.0.1)
+  ssh: 2222            # SSH into the container
+
+# ── ssh (drive the TUI over a real PTY) ─────────────────────────────
+ssh:
+  enabled: true
+  password: change-me
+  # authorized_key: ~/.ssh/id_ed25519.pub   # key auth, preferred when set
+# enabled requires password or authorized_key; to disable: ssh: { enabled: false }
+
+# ── env (passed to the gateway; put provider keys here) ─────────────
+env:
+  ANTHROPIC_API_KEY: sk-ant-xxxxxxxxxxxxxxxx
+
+# ── mounts (rw → /workspace, ro → /reference; never under /opt/data) ─
+mounts:
+  - { host: ~/workspace/my-project, mode: rw }
+  - { host: ~/docs, mode: ro, target: design-docs }
+
+# ── build (optional: extra tools per-container, not in the default image) ──
+# When set, the emitted compose gets a `build:` block instead of the prebuilt
+# base image, and you run `docker compose ... up -d --build`. The Dockerfile
+# must start `FROM hermes-claude:<yyyymmdd>` (the base; build it with
+# `agent-isolation build daemon`) and add your tools. Use this for tools that
+# can't be mounted from the host — e.g. a Linux-native CLI binary. Mountable,
+# pure-JS tools should just be mounted (see `mounts` above).
+#
+# build:
+#   dockerfile: ~/workspace/my-tool/docker/Dockerfile   # FROM hermes-claude:<date> + extras
+#   # context: ~/workspace/my-tool/docker               # optional; defaults to the Dockerfile's dir
+#   args:                                               # optional build args
+#     DUCKDB_VERSION: 1.3.0
+#     DUCKDB_ARCH: aarch64                              # Apple Silicon → arm64 container

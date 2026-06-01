@@ -5,3 +5,6 @@ services.compose.yml
 *.services.compose.yml
 settings.container.json
 local-additional-context.md
+
+# Test fixtures are not live config — keep them tracked (they ARE the suite).
+!**/__tests__/fixtures/*.agent.yml

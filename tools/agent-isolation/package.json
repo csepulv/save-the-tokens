@@ -1,0 +1,21 @@
+{
+  "name": "agent-isolation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run isolated Claude Code containers from a YAML config — host folders mounted rw/ro, config persisted on the host, multi-instance.",
+  "type": "module",
+  "bin": {
+    "agent-isolation": "./bin/agent-isolation.js"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.6"
+  }
+}

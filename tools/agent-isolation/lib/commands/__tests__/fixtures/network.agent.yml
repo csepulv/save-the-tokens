@@ -1,0 +1,7 @@
+container_name: agent-net
+
+mounts:
+  - { host: ~/agent-claude, mode: claude }
+  - { host: ~/proj, mode: rw }
+
+network: testnet

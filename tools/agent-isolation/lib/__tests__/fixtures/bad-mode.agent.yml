@@ -1,0 +1,3 @@
+mounts:
+  - { host: ~/ws/agent-claude, mode: claude }
+  - { host: ~/ws/proj, mode: bogus }

@@ -50,6 +50,52 @@ claude --dangerously-skip-permissions
 If only one `*.agent.yml` exists in cwd (or in the tool dir), `--config`
 auto-detects it; the flag becomes optional.
 
+## Node CLI
+
+The host-side orchestration is also available as a single `agent-isolation`
+Node CLI — the going-forward implementation. The subcommands mirror the
+shell scripts one-for-one, read the same `agent.yml`, and produce the same
+result (the sync output and `docker run` command are verified equal to the
+shell scripts' against a differential test):
+
+```bash
+npm install                                  # once
+
+node bin/agent-isolation.js sync   --config my-project.agent.yml
+node bin/agent-isolation.js build
+node bin/agent-isolation.js launch --config my-project.agent.yml
+node bin/agent-isolation.js launch --config my-project.agent.yml --dry-run
+```
+
+`sync` accepts `--source`, `--force`, `--headless`, `--include-all`;
+`launch` accepts `--name`, `--autonomous "<prompt>"`, `--resume`, `--build`,
+`--dry-run`; `build` accepts `--no-cache`. Run any subcommand with `--help`.
+
+**Daemon mode (experimental).** A config with `mode: daemon` makes `launch`
+*emit* a `docker-compose.yml` for an always-on, hermes-style container (gateway
++ dashboard + ssh) instead of running an interactive `docker run` — see
+`agent.daemon.yml.example`. Build the image with `agent-isolation build daemon`
+— it produces a **date-tagged** `hermes-claude:<yyyymmdd>` (e.g.
+`hermes-claude:20260530`) on the s6-overlay Hermes base, which is **pinned by
+digest** in the daemon Dockerfile so rebuilds are reproducible. Then `docker
+compose -f <workspace>/docker-compose.yml up -d`. Verified to stand up (ssh +
+dashboard). Default mode is `interactive` (everything above).
+
+**Per-container tools (daemon mode).** To add tools to *one* container without
+baking them into the default image, give the daemon config a `build:` block
+(`dockerfile` + optional `context`/`args`). The emitted compose then carries a
+`build:` section instead of the base `image:`, and you run `docker compose ...
+up -d --build`. The Dockerfile must start `FROM hermes-claude:<yyyymmdd>` and add
+your tools — use it for things that can't be mounted from the host (a
+Linux-native binary, an arch-specific build); mountable, pure-JS tools should
+just be mounted. See the `build:` stanza in `agent.daemon.yml.example`.
+
+The Node CLI needs Node 20+, Docker, and `rsync` (it does the JSON
+transforms natively — `jq`/`yq` are only needed by the shell scripts).
+The container layer (`Dockerfile`, `entrypoint.sh`) is unchanged and still
+shell. The shell scripts below remain for now; they are superseded by the
+Node CLI for host-side work.
+
 ## Scripts
 
 | Script           | Purpose                                                                                        |

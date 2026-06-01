@@ -1,0 +1,4 @@
+mounts:
+  - { host: ~/agent-claude, mode: claude }
+  - { host: ./proj, mode: rw }
+  - { host: ../sibling, mode: ro }

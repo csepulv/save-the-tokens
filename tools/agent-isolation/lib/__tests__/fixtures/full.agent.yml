@@ -1,0 +1,24 @@
+container_name: agent-tsugi
+hostname: tsugi-dev
+
+mounts:
+  - { host: ~/agent-workspace/agent-claude, mode: claude }
+  - { host: ~/workspace/my-project, mode: rw }
+  - { host: ~/workspace/stt-private, mode: ro }
+  - { host: ~/some-mcp-source, mode: mcp, target: my-mcp }
+
+ports:
+  - 5173
+  - "27017:27017"
+
+services: my-project.services.compose.yml
+
+env:
+  CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+  PROJECT_API_HOST: http://elasticsearch:9200
+
+on_start:
+  command: node /reference/x/daemon.js
+  env:
+    CENTRAL_URL: http://host.docker.internal:4830
+  log: /tmp/daemon.log
