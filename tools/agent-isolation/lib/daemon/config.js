@@ -2,7 +2,7 @@
 // config into a normalized object. File keys are snake_case; the normalized
 // object is camelCase; `~` expands to home in path-valued fields.
 //
-// Copied from tools/hermes/lib/config.js (M3a copy phase). `loadConfig` is
+// Copied from the former tools/hermes/lib/config.js (M3a copy phase). `loadConfig` is
 // sync (agent-isolation is all-sync); validation is verbatim. Convergence
 // with the interactive config model is M3c.
 
@@ -11,6 +11,7 @@ import { dirname } from 'node:path';
 import os from 'node:os';
 import yaml from 'js-yaml';
 import { resolveConfigPath } from '../paths.js';
+import { normalizeResources } from '../resources.js';
 
 const HOME = os.homedir();
 const MOUNT_MODES = new Set(['rw', 'ro']);
@@ -179,6 +180,7 @@ export function validateConfig(raw, baseDir = process.cwd(), { realpath = realpa
     resolveConfigPath(p, { home: HOME, baseDir, realpath, canonicalize });
   const build = normalizeBuild(raw, resolvePath);
   const envFile = normalizeEnvFile(raw, resolvePath);
+  const resources = normalizeResources(raw.resources);
   return {
     containerName: requireString(raw, 'container_name'),
     hermesWorkspace: resolvePath(requireString(raw, 'hermes_workspace')),
@@ -189,6 +191,7 @@ export function validateConfig(raw, baseDir = process.cwd(), { realpath = realpa
     mounts: normalizeMounts(raw, resolvePath),
     ...(build && { build }),
     ...(envFile && { envFile }),
+    ...(resources && { resources }),
   };
 }
 

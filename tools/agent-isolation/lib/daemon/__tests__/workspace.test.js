@@ -1,4 +1,4 @@
-// Ported from tools/hermes/lib/__tests__/workspace.test.js (M3a), sync.
+// Ported from the former tools/hermes/lib/__tests__/workspace.test.js (M3a), sync.
 import { test, expect } from 'vitest';
 import { ensureWorkspace } from '../workspace.js';
 

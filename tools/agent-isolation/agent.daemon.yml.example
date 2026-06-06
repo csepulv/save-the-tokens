@@ -33,10 +33,28 @@ ssh:
 env:
   ANTHROPIC_API_KEY: sk-ant-xxxxxxxxxxxxxxxx
 
+# ── env_file (optional; secret-free config alternative) ─────────────
+# Instead of inline `env:` secrets, point at a .env file (compose `env_file:`).
+# Resolves config-relative (/absolute, ~/home, ./sibling) and must exist.
+# compose loads it first, then `environment:` — so `env:` above overrides it.
+# Put the ANTHROPIC key (and any other secrets) in the .env (gitignored) and
+# this config stays secret-free. The workspace `.env` is also mounted at
+# /opt/data/.env, so `./hermes/.env` is a natural home.
+# env_file: ./hermes/.env
+
 # ── mounts (rw → /workspace, ro → /reference; never under /opt/data) ─
 mounts:
   - { host: ~/workspace/my-project, mode: rw }
   - { host: ~/docs, mode: ro, target: design-docs }
+
+# ── resources (optional: CPU + memory caps) ─────────────────────────
+# Cap the container (emitted as compose deploy.resources.limits, honored by
+# `docker compose up`). cpus = decimal cores; memory = a size like 512m, 4g.
+# To change them on a running daemon: edit here, re-emit (launch), then
+# `docker compose ... up -d` to recreate. Omit for no caps.
+# resources:
+#   cpus: 4
+#   memory: 8g
 
 # ── build (optional: extra tools per-container, not in the default image) ──
 # When set, the emitted compose gets a `build:` block instead of the prebuilt

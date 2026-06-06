@@ -26,8 +26,23 @@ function imageOrBuild(config, containerName) {
   };
 }
 
+// Resource caps → compose deploy.resources.limits (honored by `compose up`,
+// non-swarm). cpus is emitted as a string per the compose spec.
+function deployLimits({ cpus, memory }) {
+  return {
+    deploy: {
+      resources: {
+        limits: {
+          ...(cpus !== undefined && { cpus: String(cpus) }),
+          ...(memory !== undefined && { memory }),
+        },
+      },
+    },
+  };
+}
+
 export function buildCompose(config, ports, identity) {
-  const { containerName, hermesWorkspace, launchOnBoot, env, mounts, ssh } = config;
+  const { containerName, hermesWorkspace, launchOnBoot, env, mounts, ssh, resources } = config;
   const { uid, gid } = identity;
   const restart = launchOnBoot ? 'unless-stopped' : 'no';
 
@@ -72,6 +87,7 @@ export function buildCompose(config, ports, identity) {
     // compose loads env_file first, then `environment:` (which wins) — secrets in
     // the .env, overrides inline.
     ...(config.envFile && { env_file: [config.envFile] }),
+    ...(resources && deployLimits(resources)),
     ports: portList,
     environment,
     volumes,

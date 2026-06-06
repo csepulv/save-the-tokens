@@ -1,4 +1,4 @@
-// Ported from tools/hermes/lib/__tests__/config.test.js (M3a copy phase).
+// Ported from the former tools/hermes/lib/__tests__/config.test.js (M3a copy phase).
 // loadConfig tests adapted to sync (agent-isolation is all-sync).
 import { test, expect } from 'vitest';
 import os from 'node:os';
@@ -202,6 +202,20 @@ test('a relative ssh.authorized_key resolves against the config dir', () => {
     '/base/cfg', { realpath: (p) => p },
   );
   expect(c.ssh.authorizedKey).toBe('/base/cfg/id.pub');
+});
+
+// ── resources ──
+test('normalizes a resources block', () => {
+  expect(validateConfig({ ...minimal, resources: { cpus: 2, memory: '4g' } }).resources)
+    .toEqual({ cpus: 2, memory: '4g' });
+});
+
+test('no resources → config.resources undefined', () => {
+  expect(validateConfig(minimal).resources).toBeUndefined();
+});
+
+test('rejects a malformed resources block', () => {
+  expect(() => validateConfig({ ...minimal, resources: { memory: 'lots' } })).toThrow(/memory/);
 });
 
 test('loadConfig resolves relative build paths against the config file dir', () => {

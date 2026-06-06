@@ -1,27 +1,49 @@
 import { listConversations } from '../discover.js';
 import { loadConfig, resolveSource } from '../config.js';
 import { collectAllEntries } from '../source-entries.js';
+import { filterByDate } from '../export-all.js';
+import { parseDateArg } from '../date.js';
 
 /**
  * List conversations.
  *
- * args: { source?, filter? }
+ * args: { source?, filter?, after?, before?, format? }
  *   - source absent → list from all configured sources (newest first)
  *   - source given  → list from just that source
+ *   - after/before  → restrict by mtime (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
+ *   - format 'json' → machine-readable array with full ISO timestamps
  */
 export async function run(args) {
   const config = await loadConfig();
 
-  if (args.source) {
-    const sourceDir = resolveSource(args.source, config);
-    const entries = await listConversations(sourceDir);
-    printListTable(filterEntries(entries, args.filter));
-    return;
+  let afterDate = null;
+  let beforeDate = null;
+  try {
+    if (args.after) afterDate = parseDateArg(args.after, { endOfDay: false });
+    if (args.before) beforeDate = parseDateArg(args.before, { endOfDay: true });
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
   }
 
-  const allEntries = await collectAllEntries(config);
-  allEntries.sort((a, b) => b.date - a.date);
-  printListTable(filterEntries(allEntries, args.filter), { showSource: true });
+  let entries;
+  let showSource;
+  if (args.source) {
+    const sourceDir = resolveSource(args.source, config);
+    entries = await listConversations(sourceDir);
+    showSource = false;
+  } else {
+    entries = await collectAllEntries(config);
+    entries.sort((a, b) => b.date - a.date);
+    showSource = true;
+  }
+  entries = filterByDate(filterEntries(entries, args.filter), afterDate, beforeDate);
+
+  if (args.format === 'json') {
+    console.log(JSON.stringify(entriesToJson(entries, { showSource }), null, 2));
+    return;
+  }
+  printListTable(entries, { showSource });
 }
 
 function filterEntries(entries, filter) {
@@ -31,6 +53,20 @@ function filterEntries(entries, filter) {
     e.project.toLowerCase().includes(lower)
     || (e.encodedDir ?? '').toLowerCase().includes(lower)
   );
+}
+
+// Machine-readable list — full ISO `date` (mtime), no minute truncation or
+// column-width clipping. Consumers (e.g. the junkdrawer CLI's needs-sync)
+// parse this instead of scraping the table.
+export function entriesToJson(entries, { showSource = false } = {}) {
+  return entries.map((entry) => ({
+    ...(showSource ? { source: entry.sourceName ?? null } : {}),
+    sessionId: entry.sessionId,
+    date: entry.date instanceof Date ? entry.date.toISOString() : entry.date,
+    project: entry.project,
+    encodedDir: entry.encodedDir ?? null,
+    preview: entry.preview,
+  }));
 }
 
 function printListTable(entries, { showSource = false } = {}) {

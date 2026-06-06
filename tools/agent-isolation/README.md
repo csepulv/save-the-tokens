@@ -214,6 +214,26 @@ inside the container. The entrypoint reads from there. This dir is
 *outside* the persistent `agent-claude/` config dir so agent-isolation
 runtime artifacts don't accumulate in claude's state.
 
+### `resources` — CPU + memory caps
+
+Cap a container's CPU and memory with an optional `resources` block (both
+modes):
+
+```yaml
+resources:
+  cpus: 2        # decimal cores (e.g. 2, 0.5)
+  memory: 4g     # a size like 512m, 4g, or a byte count
+```
+
+Either field may be omitted. Interactive mode maps these to `docker run
+--cpus` / `--memory`; daemon mode emits them as compose
+`deploy.resources.limits` (honored by `docker compose up`).
+
+**Interactive resources apply at container *create* only** — `docker
+start` (resume) can't change a running container's limits. To re-apply,
+`docker rm <name>` and relaunch. For daemon mode, edit the config,
+re-emit (`launch`), then `docker compose ... up -d` to recreate.
+
 ## Service Containers
 
 An isolated agent often needs a backing service — MongoDB, Elasticsearch,

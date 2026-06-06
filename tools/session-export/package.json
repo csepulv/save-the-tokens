@@ -1,6 +1,6 @@
 {
   "name": "@csepulv/session-export",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Export Claude Code conversations from JSONL to readable markdown or plain text.",
   "type": "module",
   "bin": {

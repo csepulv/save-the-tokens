@@ -203,7 +203,22 @@ session-export list --source work
 
 # Filter by project path substring
 session-export list --filter my-app
+
+# Restrict by mtime window (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
+session-export list --after 2026-06-01
+session-export list --after 2026-06-02T08:00:00 --before 2026-06-02T18:00:00
+
+# Machine-readable output (full ISO timestamps, no truncation)
+session-export list --format json
 ```
+
+The default `table` format truncates the date to the minute and clips
+columns for display. `--format json` emits an array of
+`{ sessionId, date, project, encodedDir, preview }` (plus `source` when
+walking all sources) with the full ISO `date` (the JSONL's mtime). Use it
+when a consumer needs to parse the list reliably — e.g. the `junkdrawer`
+CLI compares each `date` against its last-synced timestamp to decide what
+needs re-syncing without exporting every session.
 
 ### Bulk export
 

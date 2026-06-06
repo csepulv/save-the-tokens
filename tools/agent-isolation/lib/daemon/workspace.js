@@ -1,5 +1,5 @@
 // daemon/workspace.js — Ensure a daemon workspace's two config dirs exist.
-// Copied from tools/hermes/lib/workspace.js (M3a), sync.
+// Copied from the former tools/hermes/lib/workspace.js (M3a), sync.
 
 import { mkdirSync } from 'node:fs';
 

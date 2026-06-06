@@ -17,7 +17,7 @@ test('buildDaemonImage builds hermes-claude from the daemon Dockerfile, no UID a
   expect(a).toEqual([
     'docker', 'build',
     '-f', '/tool/daemon-image/Dockerfile',
-    '-t', 'hermes-claude:20260530', // date-tagged, not :latest
+    '-t', 'hermes-claude:20260603', // date-tagged, not :latest
     '/tool/daemon-image',
   ]);
   expect(a.join(' ')).not.toContain('AGENT_UID'); // hermes handles UID at runtime

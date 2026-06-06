@@ -54,7 +54,10 @@ await yargs(afterOutput)
     'List conversations',
     (y) => y
       .option('source', { type: 'string', describe: 'Restrict to one source (default: walk all)' })
-      .option('filter', { type: 'string', describe: 'Filter by project path substring' }),
+      .option('filter', { type: 'string', describe: 'Filter by project path substring' })
+      .option('after', { type: 'string', describe: 'Include sessions on/after (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)' })
+      .option('before', { type: 'string', describe: 'Include sessions on/before (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)' })
+      .option('format', { type: 'string', default: 'table', choices: ['table', 'json'], describe: 'Output format (json: machine-readable, full ISO timestamps)' }),
     (args) => listCmd.run(args)
   )
   .command(

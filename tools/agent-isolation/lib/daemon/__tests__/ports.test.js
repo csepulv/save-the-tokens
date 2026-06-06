@@ -1,4 +1,4 @@
-// Adapted from tools/hermes/lib/__tests__/ports.test.js (M3a): sync `free`
+// Adapted from the former tools/hermes/lib/__tests__/ports.test.js (M3a): sync `free`
 // predicate (isPortFree-shaped) instead of async get-port.
 import { test, expect } from 'vitest';
 import { resolvePorts } from '../ports.js';

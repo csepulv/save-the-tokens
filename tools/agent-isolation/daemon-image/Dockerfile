@@ -24,13 +24,25 @@ FROM nousresearch/hermes-agent@sha256:80026fad0db5b444ff9f0f1413578becfcaad949d1
 # it, but `docker exec` bypasses that — put it on PATH directly.
 ENV PATH="/opt/hermes/.venv/bin:${PATH}"
 
-# tmux — required by Hermes's claude-code skill; openssh-server — SSH access.
-# (No tini: /init is the container's init now.)
+# tmux — required by Hermes's claude-code skill; openssh-server — SSH access;
+# chromium + fonts — for agent-browser (below). On trixie, `chromium` self-resolves
+# its runtime libs (the time64/`t64` variants), so no explicit lib list is needed —
+# unlike the bookworm-based interactive image. (No tini: /init is the container's init now.)
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends tmux openssh-server \
+  && apt-get install -y --no-install-recommends \
+       tmux openssh-server \
+       chromium fonts-liberation fonts-noto-color-emoji \
   && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @anthropic-ai/claude-code
+# agent-browser (vercel-labs) — headless-browser CLI for in-container agent sessions.
+RUN npm install -g @anthropic-ai/claude-code agent-browser
+
+# Point agent-browser (and other CHROME_PATH-aware tools) at the apt Chromium.
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD stops Playwright fetching its own browser during
+# project installs (Playwright itself does NOT read CHROME_PATH — projects pass
+# executablePath or run `npx playwright install`). Mirrors the interactive image.
+ENV CHROME_PATH=/usr/bin/chromium
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # bash as the hermes user's login shell (line editing/history over SSH); make
 # the TUI build dir writable regardless of the runtime UID-remap.
@@ -49,8 +61,8 @@ RUN chmod +x /etc/cont-init.d/01-sshd
 # ENV vars don't reach SSH sessions (sshd starts a fresh env). Propagate the
 # functional ones via /etc/environment (non-login, PAM) and /etc/profile.d
 # (login shells), so `hermes` is resolvable + finds its config over SSH.
-RUN env | grep -E '^(PATH=|HERMES_|PLAYWRIGHT_BROWSERS_PATH=|PYTHONUNBUFFERED=|npm_config_install_links=)' > /etc/environment \
+RUN env | grep -E '^(PATH=|HERMES_|CHROME_PATH=|PLAYWRIGHT_BROWSERS_PATH=|PYTHONUNBUFFERED=|npm_config_install_links=)' > /etc/environment \
  && sed 's/^/export /' /etc/environment > /etc/profile.d/hermes.sh
 
 # Build-time sanity checks.
-RUN claude --version && tmux -V && sshd -t
+RUN claude --version && tmux -V && sshd -t && agent-browser --version && chromium --version

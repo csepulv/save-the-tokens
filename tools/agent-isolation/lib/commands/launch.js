@@ -250,6 +250,7 @@ function createFresh(session) {
     envPairs: cfg.envPairs,
     envFile: cfg.envFile,
     network,
+    resources: cfg.resources,
     run,
   });
 

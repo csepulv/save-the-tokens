@@ -100,6 +100,23 @@ test('throws on an invalid mount mode, naming the offender', () => {
   expect(() => parse('bad-mode.agent.yml')).toThrow(/bogus/);
 });
 
+// ── resources ──────────────────────────────────────────────────────
+const parseRaw = (yamlText) =>
+  parseConfig('/cfg/x.agent.yml', { home: HOME, readFile: () => yamlText, realpath: (p) => p });
+
+test('parses a resources block', () => {
+  const cfg = parseRaw('mounts: [{ host: /x, mode: rw }]\nresources: { cpus: 2, memory: 4g }');
+  expect(cfg.resources).toEqual({ cpus: 2, memory: '4g' });
+});
+
+test('no resources → cfg.resources is null', () => {
+  expect(parseRaw('mounts: [{ host: /x, mode: rw }]').resources).toBeNull();
+});
+
+test('surfaces a resources validation error', () => {
+  expect(() => parseRaw('mounts: [{ host: /x, mode: rw }]\nresources: { cpus: -1 }')).toThrow(/cpus/);
+});
+
 // ── resolveConfigFile ──────────────────────────────────────────────
 const resolveDeps = ({ cwdList = [], toolList = [], exists = true }) => ({
   cwd: '/cwd',

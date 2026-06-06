@@ -11,6 +11,7 @@ import { homedir } from 'node:os';
 import yaml from 'js-yaml';
 
 import { resolveConfigPath } from './paths.js';
+import { normalizeResources } from './resources.js';
 
 import {
   AGENT_HOME,
@@ -163,6 +164,7 @@ export function parseConfig(configFile, deps = {}) {
     env,
     envPairs: Object.entries(env).map(([key, value]) => `${key}=${value}`),
     envFile,
+    resources: normalizeResources(raw.resources),
     onStart: raw.on_start || null,
     servicesFile: raw.services || '',
     network: raw.network || '',

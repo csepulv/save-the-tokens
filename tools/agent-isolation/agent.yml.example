@@ -59,6 +59,23 @@ env: {}
   # CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
   # PROJECT_API_HOST: http://elasticsearch:9200
 
+# ── env_file (optional) ─────────────────────────────────────────────
+# Path to a .env file loaded into the container (docker `--env-file`).
+# Resolves like the paths above (/absolute, ~/home, ./config-relative) and
+# must exist. Keep secrets here (gitignored) and use `env:` above only for
+# non-secret overrides — `env:` wins (the `-e` flags come after `--env-file`).
+# env_file: ./secrets.env
+
+# ── resources (optional: CPU + memory caps) ─────────────────────────
+# Cap the container's CPU and memory (docker `--cpus` / `--memory`).
+#   cpus   — decimal cores (e.g. 2, 0.5)
+#   memory — a size like 512m, 4g (or a byte count)
+# Applied at container CREATE only — resuming an existing container can't
+# change them (`docker rm <name>` and relaunch to re-apply). Omit for no caps.
+# resources:
+#   cpus: 2
+#   memory: 4g
+
 # ── on_start (optional) ─────────────────────────────────────────────
 # Generic backgrounded command run inside the container at every start
 # (fresh create AND resume). Output goes to a log file in the container.

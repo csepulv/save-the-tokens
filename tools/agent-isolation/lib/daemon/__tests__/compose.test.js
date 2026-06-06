@@ -25,7 +25,7 @@ test('buildCompose produces a single hermes service running `gateway run`', () =
   expect(c.services.hermes.container_name).toBe('agent-hermes');
   expect(c.services.hermes.command).toEqual(['gateway', 'run']);
   // image is the date-tagged daemon ref, never :latest (the moving target)
-  expect(c.services.hermes.image).toBe('hermes-claude:20260530');
+  expect(c.services.hermes.image).toBe('hermes-claude:20260603');
 });
 
 test('gateway + dashboard ports published loopback on the one container', () => {
@@ -93,6 +93,23 @@ test('no env_file → no env_file key', () => {
   expect(buildCompose(baseConfig, ports, identity).services.hermes.env_file).toBeUndefined();
 });
 
+// ── resources → deploy.resources.limits ──
+test('resources present → deploy.resources.limits (cpus stringified)', () => {
+  const c = buildCompose({ ...baseConfig, resources: { cpus: 2, memory: '4g' } }, ports, identity);
+  expect(c.services.hermes.deploy).toEqual({
+    resources: { limits: { cpus: '2', memory: '4g' } },
+  });
+});
+
+test('resources with one field → only that limit', () => {
+  const c = buildCompose({ ...baseConfig, resources: { memory: '512m' } }, ports, identity);
+  expect(c.services.hermes.deploy).toEqual({ resources: { limits: { memory: '512m' } } });
+});
+
+test('no resources → no deploy block', () => {
+  expect(buildCompose(baseConfig, ports, identity).services.hermes.deploy).toBeUndefined();
+});
+
 // ── per-container image extension (`build:`) ──────────────────────────
 test('build present → compose build block + per-container image tag (no bare base image)', () => {
   const c = buildCompose(
@@ -117,6 +134,6 @@ test('build with explicit context → dockerfile relative to it', () => {
 
 test('build absent → base image, no build block (regression)', () => {
   const c = buildCompose(baseConfig, ports, identity);
-  expect(c.services.hermes.image).toBe('hermes-claude:20260530');
+  expect(c.services.hermes.image).toBe('hermes-claude:20260603');
   expect(c.services.hermes.build).toBeUndefined();
 });

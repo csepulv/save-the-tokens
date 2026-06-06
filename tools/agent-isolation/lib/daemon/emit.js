@@ -4,7 +4,7 @@
 // resolve ports → build compose → write <ws>/docker-compose.yml → print next
 // steps. No container is created (M3a is emit-only; standing up is M3b).
 //
-// Ported from tools/hermes/init-hermes-container.js (M3a), sync + DI seam.
+// Ported from the former tools/hermes/init-hermes-container.js (M3a), sync + DI seam.
 
 import { writeFileSync, existsSync } from 'node:fs';
 import yaml from 'js-yaml';

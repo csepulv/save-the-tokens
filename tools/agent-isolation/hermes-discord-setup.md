@@ -37,6 +37,24 @@ hermes config show | grep -i discord
 # expect:  Discord: configured ✓
 ```
 
+> **Daemon container — restart to apply.** In the s6-supervised daemon
+> container (`mode: daemon`), the gateway runs under supervision and does
+> **not** hot-reload config. After `hermes gateway setup` (or any edit to
+> `config.yaml` / `.env`), restart the container so the gateway re-reads it
+> and connects the platform — there's no in-place reload:
+>
+> ```bash
+> WS=<hermes_workspace from your agent.yml>
+> docker compose -f $WS/docker-compose.yml up -d   # recreate/restart
+> # or: docker restart <container_name>
+> ```
+>
+> A recreate is cheap and safe (state lives in host mounts), and the gateway
+> reconnects on its own — `gateway.log` shows `✓ discord connected` within a
+> few seconds of boot. Note `hermes gateway install`/`start`/`restart` target
+> a systemd/launchd service that doesn't exist in the container (see §4), so a
+> **container** restart is the bounce, not those subcommands.
+
 ---
 
 ## 3. Set the user allowlist
@@ -81,6 +99,19 @@ hermes gateway list
 ```
 
 `hermes gateway status` only checks the PID — `gateway list` checks the WebSocket connection. Trust `list`.
+
+> **Daemon-container exception — don't trust `gateway list` here.** In the
+> s6-supervised daemon container, `hermes gateway list` is **unreliable**: it
+> reports `✗ default — not running` even while the gateway is fully connected
+> and answering messages (the CLI checks state the supervised process doesn't
+> update). `docker logs` is no help either — it shows only the startup banner.
+> The source of truth is the gateway log file **inside** the container:
+>
+> ```bash
+> docker exec <container> tail -f /opt/data/logs/gateway.log
+> # connected:  ✓ discord connected   /   [Discord] Connected as <bot>#1234
+> # traffic:    inbound message: platform=discord user=… msg='…'
+> ```
 
 ---
 

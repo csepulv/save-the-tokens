@@ -30,10 +30,15 @@ export function buildRunCommand({
   envPairs,
   envFile,
   network,
+  resources,
   run,
   image = `${IMAGE_NAME}:latest`,
 }) {
   const cmd = ['docker', 'run', '--name', containerName, '--hostname', hostname, '-it'];
+
+  // Resource caps (optional) — applied at create only; docker start can't change them.
+  if (resources?.cpus !== undefined) cmd.push('--cpus', String(resources.cpus));
+  if (resources?.memory !== undefined) cmd.push('--memory', resources.memory);
 
   if (claudeDir) {
     cmd.push('-v', `${claudeDir}:${CLAUDE_CONTAINER_PATH}:rw`);

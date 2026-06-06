@@ -70,6 +70,30 @@ test('no env_file → no --env-file flag', () => {
   expect(buildRunCommand({ ...base, run: { mode: 'interactive' } })).not.toContain('--env-file');
 });
 
+test('resources: --cpus/--memory emitted right after -it (create only)', () => {
+  const cmd = buildRunCommand({
+    ...base, resources: { cpus: 2, memory: '4g' }, run: { mode: 'interactive' },
+  });
+  const it = cmd.indexOf('-it');
+  expect(cmd.slice(it, it + 5)).toEqual(['-it', '--cpus', '2', '--memory', '4g']);
+});
+
+test('resources: cpus-only and memory-only emit just that flag', () => {
+  const cpusOnly = buildRunCommand({ ...base, resources: { cpus: 0.5 }, run: { mode: 'interactive' } });
+  expect(cpusOnly).toContain('--cpus');
+  expect(cpusOnly).not.toContain('--memory');
+
+  const memOnly = buildRunCommand({ ...base, resources: { memory: '512m' }, run: { mode: 'interactive' } });
+  expect(memOnly).toContain('--memory');
+  expect(memOnly).not.toContain('--cpus');
+});
+
+test('no resources → no --cpus/--memory flags', () => {
+  const cmd = buildRunCommand({ ...base, run: { mode: 'interactive' } });
+  expect(cmd).not.toContain('--cpus');
+  expect(cmd).not.toContain('--memory');
+});
+
 test('resume mode runs claude --continue', () => {
   const cmd = buildRunCommand({ ...base, run: { mode: 'resume' } });
   expect(cmd.slice(-3)).toEqual(['claude', '--dangerously-skip-permissions', '--continue']);

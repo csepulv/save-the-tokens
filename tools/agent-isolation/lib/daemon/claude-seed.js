@@ -4,7 +4,7 @@
 // MCP servers won't resolve inside the nested-worker container — the daemon
 // counterpart to the interactive sync's MCP *injection*).
 //
-// Copied from tools/hermes/lib/claude-seed.js (M3a), sync.
+// Copied from the former tools/hermes/lib/claude-seed.js (M3a), sync.
 
 import { readdirSync, readFileSync, writeFileSync, copyFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
